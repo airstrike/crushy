@@ -26,7 +26,7 @@ mod length_fill;
 mod use_as_rename;
 
 pub fn explain(name: &str) -> i32 {
-    let target = format!("clippy::{}", name.to_ascii_uppercase());
+    let target = format!("crushy::{}", name.to_ascii_uppercase());
 
     if let Some(info) = declared_lints::LINTS.iter().find(|info| info.lint.name == target) {
         println!("{}", sanitize_explanation(info.explanation));

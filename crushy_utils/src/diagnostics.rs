@@ -14,24 +14,9 @@ use rustc_errors::{EmissionGuarantee, SubstitutionPart, Suggestions};
 use rustc_hir::HirId;
 use rustc_lint::{LateContext, Lint, LintContext};
 use rustc_span::Span;
-use std::env;
 
-fn docs_link(diag: &mut Diag<'_, ()>, lint: &'static Lint) {
-    if env::var("CRUSHY_DISABLE_DOCS_LINKS").is_err()
-        && let Some(lint) = lint.name_lower().strip_prefix("crushy::")
-    {
-        diag.help(format!(
-            "for further information visit https://rust-lang.github.io/rust-clippy/{}/index.html#{lint}",
-            match option_env!("CFG_RELEASE_CHANNEL") {
-                // Crushy version is 0.1.xx
-                //
-                // Always use .0 because we do not generate separate lint doc pages for rust patch releases
-                Some("stable") => concat!("rust-1.", env!("CARGO_PKG_VERSION_PATCH"), ".0"),
-                Some("beta") => "beta",
-                _ => "master",
-            }
-        ));
-    }
+fn docs_link(_diag: &mut Diag<'_, ()>, _lint: &'static Lint) {
+    // No docs site yet — see https://github.com/airstrike/crushy
 }
 
 /// Makes sure that a diagnostic is well formed.
