@@ -12,6 +12,7 @@
 extern crate rustc_ast;
 extern crate rustc_lint;
 extern crate rustc_session;
+extern crate rustc_span;
 
 #[macro_use]
 extern crate declare_crushy_lint;
@@ -22,6 +23,7 @@ pub mod declared_lints;
 pub mod deprecated_lints;
 
 mod length_fill;
+mod use_as_rename;
 
 pub fn explain(name: &str) -> i32 {
     let target = format!("clippy::{}", name.to_ascii_uppercase());
@@ -53,4 +55,5 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
     }
 
     store.register_early_pass(|| Box::new(length_fill::LengthFill));
+    store.register_early_pass(|| Box::new(use_as_rename::UseAsRename));
 }
