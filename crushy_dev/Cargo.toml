@@ -1,0 +1,21 @@
+[package]
+name = "crushy_dev"
+description = "Crushy developer tooling"
+version = "0.1.0"
+edition = "2024"
+authors = ["Andy Terra <tech@andyterra.com>"]
+repository = "https://github.com/airstrike/crushy"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+chrono = { version = "0.4.38", default-features = false, features = ["clock"] }
+clap = { version = "4.4", features = ["derive"] }
+indoc = "1.0"
+itertools = "0.12"
+opener = "0.8"
+rustc-literal-escaper = "0.0.7"
+walkdir = "2.3"
+
+[package.metadata.rust-analyzer]
+# This package uses #[feature(rustc_private)]
+rustc_private = true

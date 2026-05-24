@@ -1,30 +1,31 @@
 [package]
-name = "clippy"
-version = "0.1.97"
-description = "A bunch of helpful lints to avoid common pitfalls in Rust"
-repository = "https://github.com/rust-lang/rust-clippy"
+name = "crushy"
+version = "0.1.0"
+authors = ["Andy Terra <tech@andyterra.com>"]
+description = "iced-specific Rust lints"
+repository = "https://github.com/airstrike/crushy"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
-keywords = ["clippy", "lint", "plugin"]
+keywords = ["crushy", "lint", "iced"]
 categories = ["development-tools", "development-tools::cargo-plugins"]
 build = "build.rs"
 edition = "2024"
 publish = false
 
 [[bin]]
-name = "cargo-clippy"
+name = "cargo-crushy"
 test = false
 path = "src/main.rs"
 
 [[bin]]
-name = "clippy-driver"
+name = "crushy-driver"
 path = "src/driver.rs"
 
 [dependencies]
-clippy_config = { path = "clippy_config" }
-clippy_lints = { path = "clippy_lints" }
-clippy_utils = { path = "clippy_utils" }
-declare_clippy_lint = { path = "declare_clippy_lint" }
+crushy_config = { path = "crushy_config" }
+crushy_lints = { path = "crushy_lints" }
+crushy_utils = { path = "crushy_utils" }
+declare_crushy_lint = { path = "declare_crushy_lint" }
 rustc_tools_util = { path = "rustc_tools_util", version = "0.4.2" }
 tempfile = { version = "3.20", optional = true }
 termize = "0.2"

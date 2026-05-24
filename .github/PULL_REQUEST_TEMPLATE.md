@@ -1,4 +1,4 @@
-Thank you for making Clippy better!
+Thank you for making Crushy better!
 
 We're collecting our changelog from pull request descriptions.
 If your PR only includes internal changes, you can just write

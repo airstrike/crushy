@@ -1,0 +1,21 @@
+[package]
+name = "crushy_config"
+version = "0.1.0"
+edition = "2024"
+authors = ["Andy Terra <tech@andyterra.com>"]
+repository = "https://github.com/airstrike/crushy"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+crushy_utils = { path = "../crushy_utils" }
+itertools = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.7.3"
+
+[dev-dependencies]
+walkdir = "2.3"
+
+[package.metadata.rust-analyzer]
+# This crate uses #[feature(rustc_private)]
+rustc_private = true

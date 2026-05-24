@@ -20,8 +20,8 @@ extern crate rustc_span;
 #[cfg(feature = "jemalloc")]
 extern crate tikv_jemalloc_sys as _;
 
-use clippy_utils::sym;
-use declare_clippy_lint::LintListBuilder;
+use crushy_utils::sym;
+use declare_crushy_lint::LintListBuilder;
 use rustc_interface::interface;
 use rustc_session::config::ErrorOutputType;
 use rustc_session::{EarlyDiagCtxt, Session};
@@ -80,10 +80,10 @@ fn test_has_arg() {
     assert!(!has_arg(args, "--bar"));
 }
 
-fn track_clippy_args(sess: &Session, args_env_var: Option<&str>) {
+fn track_crushy_args(sess: &Session, args_env_var: Option<&str>) {
     sess.env_depinfo
         .borrow_mut()
-        .insert((sym::CLIPPY_ARGS, args_env_var.map(Symbol::intern)));
+        .insert((sym::CRUSHY_ARGS, args_env_var.map(Symbol::intern)));
 }
 
 /// Track files that may be accessed at runtime in `file_depinfo` so that cargo will re-run clippy
@@ -91,15 +91,15 @@ fn track_clippy_args(sess: &Session, args_env_var: Option<&str>) {
 fn track_files(sess: &Session) {
     let mut file_depinfo = sess.file_depinfo.borrow_mut();
 
-    // Used by `clippy::cargo` lints and to determine the MSRV. `cargo clippy` executes `clippy-driver`
+    // Used by `crushy::cargo` lints and to determine the MSRV. `cargo crushy` executes `crushy-driver`
     // with the current directory set to `CARGO_MANIFEST_DIR` so a relative path is fine
     if Path::new("Cargo.toml").exists() {
         file_depinfo.insert(sym::Cargo_toml);
     }
 
-    // `clippy.toml` will be automatically tracked as it's loaded with `sess.source_map().load_file()`
+    // `crushy.toml` will be automatically tracked as it's loaded with `sess.source_map().load_file()`
 
-    // During development track the `clippy-driver` executable so that cargo will re-run clippy whenever
+    // During development track the `crushy-driver` executable so that cargo will re-run clippy whenever
     // it is rebuilt
     if cfg!(debug_assertions)
         && let Ok(current_exe) = env::current_exe()
@@ -113,40 +113,40 @@ struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
 /// This is different from `DefaultCallbacks` that it will inform Cargo to track the value of
-/// `CLIPPY_ARGS` environment variable.
+/// `CRUSHY_ARGS` environment variable.
 struct RustcCallbacks {
-    clippy_args_var: Option<String>,
+    crushy_args_var: Option<String>,
 }
 
 impl rustc_driver::Callbacks for RustcCallbacks {
     fn config(&mut self, config: &mut interface::Config) {
-        let clippy_args_var = self.clippy_args_var.take();
+        let crushy_args_var = self.crushy_args_var.take();
         config.track_state = Some(Box::new(move |sess| {
-            track_clippy_args(sess, clippy_args_var.as_deref());
+            track_crushy_args(sess, crushy_args_var.as_deref());
         }));
         config.extra_symbols = sym::EXTRA_SYMBOLS.into();
     }
 }
 
-struct ClippyCallbacks {
-    clippy_args_var: Option<String>,
+struct CrushyCallbacks {
+    crushy_args_var: Option<String>,
 }
 
-impl rustc_driver::Callbacks for ClippyCallbacks {
+impl rustc_driver::Callbacks for CrushyCallbacks {
     #[expect(rustc::bad_opt_access, reason = "necessary in clippy driver to set `mir_opt_level`")]
     fn config(&mut self, config: &mut interface::Config) {
-        let conf_path = clippy_config::lookup_conf_file();
+        let conf_path = crushy_config::lookup_conf_file();
         let previous = config.register_lints.take();
-        let clippy_args_var = self.clippy_args_var.take();
+        let crushy_args_var = self.crushy_args_var.take();
         config.track_state = Some(Box::new(move |sess| {
-            track_clippy_args(sess, clippy_args_var.as_deref());
+            track_crushy_args(sess, crushy_args_var.as_deref());
             track_files(sess);
 
-            // Trigger a rebuild if CLIPPY_CONF_DIR changes. The value must be a valid string so
+            // Trigger a rebuild if CRUSHY_CONF_DIR changes. The value must be a valid string so
             // changes between dirs that are invalid UTF-8 will not trigger rebuilds
             sess.env_depinfo.borrow_mut().insert((
-                sym::CLIPPY_CONF_DIR,
-                env::var("CLIPPY_CONF_DIR").ok().map(|dir| Symbol::intern(&dir)),
+                sym::CRUSHY_CONF_DIR,
+                env::var("CRUSHY_CONF_DIR").ok().map(|dir| Symbol::intern(&dir)),
             ));
         }));
         config.register_lints = Some(Box::new(move |sess, lint_store| {
@@ -157,18 +157,18 @@ impl rustc_driver::Callbacks for ClippyCallbacks {
             }
 
             let mut list_builder = LintListBuilder::default();
-            list_builder.insert(clippy_lints::declared_lints::LINTS);
+            list_builder.insert(crushy_lints::declared_lints::LINTS);
             list_builder.register(lint_store);
 
-            let conf = clippy_config::Conf::read(sess, &conf_path);
-            clippy_lints::register_lint_passes(lint_store, conf);
+            let conf = crushy_config::Conf::read(sess, &conf_path);
+            crushy_lints::register_lint_passes(lint_store, conf);
         }));
         config.extra_symbols = sym::EXTRA_SYMBOLS.into();
 
-        // FIXME: #4825; This is required, because Clippy lints that are based on MIR have to be
+        // FIXME: #4825; This is required, because Crushy lints that are based on MIR have to be
         // run on the unoptimized MIR. On the other hand this results in some false negatives. If
         // MIR passes can be enabled / disabled separately, we should figure out, what passes to
-        // use for Clippy.
+        // use for Crushy.
         config.opts.unstable_opts.mir_opt_level = Some(0);
         config.opts.unstable_opts.mir_enable_passes =
             vec![("CheckNull".to_owned(), false), ("CheckAlignment".to_owned(), false)];
@@ -198,7 +198,7 @@ fn main() -> ExitCode {
         // as simple as moving the call from the hook to main, because `install_ice_hook` doesn't
         // accept a generic closure.
         let version_info = rustc_tools_util::get_version_info!();
-        dcx.handle().note(format!("Clippy version: {version_info}"));
+        dcx.handle().note(format!("Crushy version: {version_info}"));
     });
 
     rustc_driver::catch_with_exit_code(move || {
@@ -233,8 +233,8 @@ fn main() -> ExitCode {
             }
         };
 
-        // make "clippy-driver --rustc" work like a subcommand that passes further args to "rustc"
-        // for example `clippy-driver --rustc --version` will print the rustc version that clippy-driver
+        // make "crushy-driver --rustc" work like a subcommand that passes further args to "rustc"
+        // for example `crushy-driver --rustc --version` will print the rustc version that crushy-driver
         // uses
         if let Some(pos) = orig_args.iter().position(|arg| arg == "--rustc") {
             orig_args.remove(pos);
@@ -273,11 +273,11 @@ fn main() -> ExitCode {
         pass_sysroot_env_if_given(&mut args, sys_root_env);
 
         let mut no_deps = false;
-        let clippy_args_var = env::var("CLIPPY_ARGS").ok();
-        let clippy_args = clippy_args_var
+        let crushy_args_var = env::var("CRUSHY_ARGS").ok();
+        let crushy_args = crushy_args_var
             .as_deref()
             .unwrap_or_default()
-            .split("__CLIPPY_HACKERY__")
+            .split("__CRUSHY_HACKERY__")
             .filter_map(|s| match s {
                 "" => None,
                 "--no-deps" => {
@@ -289,24 +289,24 @@ fn main() -> ExitCode {
             .chain(vec!["--cfg".into(), "clippy".into()])
             .collect::<Vec<String>>();
 
-        // If no Clippy lints will be run we do not need to run Clippy
+        // If no Crushy lints will be run we do not need to run Crushy
         let cap_lints_allow = arg_value(&orig_args, "--cap-lints", |val| val == "allow").is_some()
-            && arg_value(&orig_args, "--force-warn", |val| val.contains("clippy::")).is_none();
+            && arg_value(&orig_args, "--force-warn", |val| val.contains("crushy::")).is_none();
 
         // If `--no-deps` is enabled only lint the primary package
         let relevant_package = !no_deps || env::var("CARGO_PRIMARY_PACKAGE").is_ok();
 
-        // Do not run Clippy for Cargo's info queries so that invalid CLIPPY_ARGS are not cached
+        // Do not run Crushy for Cargo's info queries so that invalid CRUSHY_ARGS are not cached
         // https://github.com/rust-lang/cargo/issues/14385
         let info_query = has_arg(&orig_args, "-vV")
             || arg_value(&orig_args, "--print", |val| val != "crate-root-lint-levels").is_some();
 
         let clippy_enabled = !cap_lints_allow && relevant_package && !info_query;
         if clippy_enabled {
-            args.extend(clippy_args);
-            rustc_driver::run_compiler(&args, &mut ClippyCallbacks { clippy_args_var });
+            args.extend(crushy_args);
+            rustc_driver::run_compiler(&args, &mut CrushyCallbacks { crushy_args_var });
         } else {
-            rustc_driver::run_compiler(&args, &mut RustcCallbacks { clippy_args_var });
+            rustc_driver::run_compiler(&args, &mut RustcCallbacks { crushy_args_var });
         }
         ExitCode::SUCCESS
     })
@@ -316,10 +316,10 @@ fn main() -> ExitCode {
 fn help_message() -> &'static str {
     color_print::cstr!(
         "Checks a file to catch common mistakes and improve your Rust code.
-Run <cyan>clippy-driver</> with the same arguments you use for <cyan>rustc</>
+Run <cyan>crushy-driver</> with the same arguments you use for <cyan>rustc</>
 
 <green,bold>Usage</>:
-    <cyan,bold>clippy-driver</> <cyan>[OPTIONS] INPUT</>
+    <cyan,bold>crushy-driver</> <cyan>[OPTIONS] INPUT</>
 
 <green,bold>Common options:</>
     <cyan,bold>-h</>, <cyan,bold>--help</>               Print this message
@@ -329,7 +329,7 @@ Run <cyan>clippy-driver</> with the same arguments you use for <cyan>rustc</>
 <green,bold>Allowing / Denying lints</>
 You can use tool lints to allow or deny lints from your code, e.g.:
 
-    <yellow,bold>#[allow(clippy::needless_lifetimes)]</>
+    <yellow,bold>#[allow(crushy::needless_lifetimes)]</>
 "
     )
 }

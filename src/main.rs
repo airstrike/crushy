@@ -25,7 +25,7 @@ fn show_version() {
 }
 
 pub fn main() {
-    // Check for version and help flags even when invoked as 'cargo-clippy'
+    // Check for version and help flags even when invoked as 'cargo-crushy'
     if env::args().any(|a| a == "--help" || a == "-h") {
         show_help();
         return;
@@ -39,8 +39,8 @@ pub fn main() {
     if let Some(pos) = env::args().position(|a| a == "--explain") {
         if let Some(mut lint) = env::args().nth(pos + 1) {
             lint.make_ascii_lowercase();
-            process::exit(clippy_lints::explain(
-                &lint.strip_prefix("clippy::").unwrap_or(&lint).replace('-', "_"),
+            process::exit(crushy_lints::explain(
+                &lint.strip_prefix("crushy::").unwrap_or(&lint).replace('-', "_"),
             ));
         } else {
             show_help();
@@ -53,20 +53,20 @@ pub fn main() {
     }
 }
 
-struct ClippyCmd {
+struct CrushyCmd {
     cargo_subcommand: &'static str,
     args: Vec<String>,
-    clippy_args: Vec<String>,
+    crushy_args: Vec<String>,
 }
 
-impl ClippyCmd {
+impl CrushyCmd {
     fn new<I>(mut old_args: I) -> Self
     where
         I: Iterator<Item = String>,
     {
         let mut cargo_subcommand = "check";
         let mut args = vec![];
-        let mut clippy_args: Vec<String> = vec![];
+        let mut crushy_args: Vec<String> = vec![];
 
         for arg in old_args.by_ref() {
             match arg.as_str() {
@@ -75,7 +75,7 @@ impl ClippyCmd {
                     continue;
                 },
                 "--no-deps" => {
-                    clippy_args.push("--no-deps".into());
+                    crushy_args.push("--no-deps".into());
                     continue;
                 },
                 "--" => break,
@@ -85,22 +85,22 @@ impl ClippyCmd {
             args.push(arg);
         }
 
-        clippy_args.append(&mut (old_args.collect()));
-        if cargo_subcommand == "fix" && !clippy_args.iter().any(|arg| arg == "--no-deps") {
-            clippy_args.push("--no-deps".into());
+        crushy_args.append(&mut (old_args.collect()));
+        if cargo_subcommand == "fix" && !crushy_args.iter().any(|arg| arg == "--no-deps") {
+            crushy_args.push("--no-deps".into());
         }
 
         Self {
             cargo_subcommand,
             args,
-            clippy_args,
+            crushy_args,
         }
     }
 
     fn path() -> PathBuf {
         let mut path = env::current_exe()
             .expect("current executable path invalid")
-            .with_file_name("clippy-driver");
+            .with_file_name("crushy-driver");
 
         if cfg!(windows) {
             path.set_extension("exe");
@@ -111,17 +111,17 @@ impl ClippyCmd {
 
     fn into_std_cmd(self) -> Command {
         let mut cmd = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
-        let clippy_args: String = self
-            .clippy_args
+        let crushy_args: String = self
+            .crushy_args
             .iter()
-            .fold(String::new(), |s, arg| s + arg + "__CLIPPY_HACKERY__");
+            .fold(String::new(), |s, arg| s + arg + "__CRUSHY_HACKERY__");
 
-        // Currently, `CLIPPY_TERMINAL_WIDTH` is used only to format "unknown field" error messages.
+        // Currently, `CRUSHY_TERMINAL_WIDTH` is used only to format "unknown field" error messages.
         let terminal_width = termize::dimensions().map_or(0, |(w, _)| w);
 
         cmd.env("RUSTC_WORKSPACE_WRAPPER", Self::path())
-            .env("CLIPPY_ARGS", clippy_args)
-            .env("CLIPPY_TERMINAL_WIDTH", terminal_width.to_string())
+            .env("CRUSHY_ARGS", crushy_args)
+            .env("CRUSHY_TERMINAL_WIDTH", terminal_width.to_string())
             .arg(self.cargo_subcommand)
             .args(&self.args);
 
@@ -133,7 +133,7 @@ fn process<I>(old_args: I) -> Result<(), i32>
 where
     I: Iterator<Item = String>,
 {
-    let cmd = ClippyCmd::new(old_args);
+    let cmd = CrushyCmd::new(old_args);
 
     let mut cmd = cmd.into_std_cmd();
 
@@ -156,10 +156,10 @@ pub fn help_message() -> &'static str {
 "Checks a package to catch common mistakes and improve your Rust code.
 
 <green,bold>Usage</>:
-    <cyan,bold>cargo clippy</> <cyan>[OPTIONS] [--] [<<ARGS>>...]</>
+    <cyan,bold>cargo crushy</> <cyan>[OPTIONS] [--] [<<ARGS>>...]</>
 
 <green,bold>Common options:</>
-    <cyan,bold>--no-deps</>                Run Clippy only on the given crate, without linting the dependencies
+    <cyan,bold>--no-deps</>                Run Crushy only on the given crate, without linting the dependencies
     <cyan,bold>--fix</>                    Automatically apply lint suggestions. This flag implies <cyan>--no-deps</> and <cyan>--all-targets</>
     <cyan,bold>-h</>, <cyan,bold>--help</>               Print this message
     <cyan,bold>-V</>, <cyan,bold>--version</>            Print version info and exit
@@ -169,7 +169,7 @@ See all options with <cyan,bold>cargo check --help</>.
 
 <green,bold>Allowing / Denying lints</>
 
-To allow or deny a lint from the command line you can use <cyan,bold>cargo clippy --</> with:
+To allow or deny a lint from the command line you can use <cyan,bold>cargo crushy --</> with:
 
     <cyan,bold>-W</> / <cyan,bold>--warn</> <cyan>[LINT]</>       Set lint warnings
     <cyan,bold>-A</> / <cyan,bold>--allow</> <cyan>[LINT]</>      Set lint allowed
@@ -178,7 +178,7 @@ To allow or deny a lint from the command line you can use <cyan,bold>cargo clipp
 
 You can use tool lints to allow or deny lints from your code, e.g.:
 
-    <yellow,bold>#[allow(clippy::needless_lifetimes)]</>
+    <yellow,bold>#[allow(crushy::needless_lifetimes)]</>
 
 <green,bold>Manifest Options:</>
     <cyan,bold>--manifest-path</> <cyan><<PATH>></>  Path to Cargo.toml
@@ -189,36 +189,36 @@ You can use tool lints to allow or deny lints from your code, e.g.:
 }
 #[cfg(test)]
 mod tests {
-    use super::ClippyCmd;
+    use super::CrushyCmd;
 
     #[test]
     fn fix() {
-        let args = "cargo clippy --fix".split_whitespace().map(ToString::to_string);
-        let cmd = ClippyCmd::new(args);
+        let args = "cargo crushy --fix".split_whitespace().map(ToString::to_string);
+        let cmd = CrushyCmd::new(args);
         assert_eq!("fix", cmd.cargo_subcommand);
         assert!(!cmd.args.iter().any(|arg| arg.ends_with("unstable-options")));
     }
 
     #[test]
     fn fix_implies_no_deps() {
-        let args = "cargo clippy --fix".split_whitespace().map(ToString::to_string);
-        let cmd = ClippyCmd::new(args);
-        assert!(cmd.clippy_args.iter().any(|arg| arg == "--no-deps"));
+        let args = "cargo crushy --fix".split_whitespace().map(ToString::to_string);
+        let cmd = CrushyCmd::new(args);
+        assert!(cmd.crushy_args.iter().any(|arg| arg == "--no-deps"));
     }
 
     #[test]
     fn no_deps_not_duplicated_with_fix() {
-        let args = "cargo clippy --fix -- --no-deps"
+        let args = "cargo crushy --fix -- --no-deps"
             .split_whitespace()
             .map(ToString::to_string);
-        let cmd = ClippyCmd::new(args);
-        assert_eq!(cmd.clippy_args.iter().filter(|arg| *arg == "--no-deps").count(), 1);
+        let cmd = CrushyCmd::new(args);
+        assert_eq!(cmd.crushy_args.iter().filter(|arg| *arg == "--no-deps").count(), 1);
     }
 
     #[test]
     fn check() {
-        let args = "cargo clippy".split_whitespace().map(ToString::to_string);
-        let cmd = ClippyCmd::new(args);
+        let args = "cargo crushy".split_whitespace().map(ToString::to_string);
+        let cmd = CrushyCmd::new(args);
         assert_eq!("check", cmd.cargo_subcommand);
     }
 }
