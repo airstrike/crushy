@@ -1,3 +1,4 @@
+#![feature(macro_metavar_expr_concat)]
 #![feature(rustc_private)]
 #![recursion_limit = "512"]
 #![warn(
@@ -8,15 +9,22 @@
     unused_qualifications
 )]
 
+extern crate rustc_ast;
 extern crate rustc_lint;
+extern crate rustc_session;
+
+#[macro_use]
+extern crate declare_crushy_lint;
 
 use crushy_config::{Conf, get_configuration_metadata, sanitize_explanation};
 
 pub mod declared_lints;
 pub mod deprecated_lints;
 
+mod length_fill;
+
 pub fn explain(name: &str) -> i32 {
-    let target = format!("crushy::{}", name.to_ascii_uppercase());
+    let target = format!("clippy::{}", name.to_ascii_uppercase());
 
     if let Some(info) = declared_lints::LINTS.iter().find(|info| info.lint.name == target) {
         println!("{}", sanitize_explanation(info.explanation));
@@ -43,4 +51,6 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
     for (name, reason) in deprecated_lints::DEPRECATED {
         store.register_removed(name, reason);
     }
+
+    store.register_early_pass(|| Box::new(length_fill::LengthFill));
 }

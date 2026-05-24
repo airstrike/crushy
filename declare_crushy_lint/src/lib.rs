@@ -47,26 +47,26 @@ impl LintListBuilder {
 
     pub fn register(self, store: &mut LintStore) {
         store.register_lints(&self.lints);
-        store.register_group(true, "crushy::all", Some("crushy_all"), self.all);
-        store.register_group(true, "crushy::cargo", Some("crushy_cargo"), self.cargo);
-        store.register_group(true, "crushy::complexity", Some("crushy_complexity"), self.complexity);
+        store.register_group(true, "clippy::all", Some("clippy_all"), self.all);
+        store.register_group(true, "clippy::cargo", Some("clippy_cargo"), self.cargo);
+        store.register_group(true, "clippy::complexity", Some("clippy_complexity"), self.complexity);
         store.register_group(
             true,
-            "crushy::correctness",
-            Some("crushy_correctness"),
+            "clippy::correctness",
+            Some("clippy_correctness"),
             self.correctness,
         );
-        store.register_group(true, "crushy::nursery", Some("crushy_nursery"), self.nursery);
-        store.register_group(true, "crushy::pedantic", Some("crushy_pedantic"), self.pedantic);
-        store.register_group(true, "crushy::perf", Some("crushy_perf"), self.perf);
+        store.register_group(true, "clippy::nursery", Some("clippy_nursery"), self.nursery);
+        store.register_group(true, "clippy::pedantic", Some("clippy_pedantic"), self.pedantic);
+        store.register_group(true, "clippy::perf", Some("clippy_perf"), self.perf);
         store.register_group(
             true,
-            "crushy::restriction",
-            Some("crushy_restriction"),
+            "clippy::restriction",
+            Some("clippy_restriction"),
             self.restriction,
         );
-        store.register_group(true, "crushy::style", Some("crushy_style"), self.style);
-        store.register_group(true, "crushy::suspicious", Some("crushy_suspicious"), self.suspicious);
+        store.register_group(true, "clippy::style", Some("clippy_style"), self.style);
+        store.register_group(true, "clippy::suspicious", Some("clippy_suspicious"), self.suspicious);
     }
 }
 
@@ -112,7 +112,7 @@ impl LintInfo {
     /// Returns the lint name in lowercase without the `crushy::` prefix
     #[must_use]
     pub fn name_lower(&self) -> String {
-        self.lint.name.strip_prefix("crushy::").unwrap().to_ascii_lowercase()
+        self.lint.name.strip_prefix("clippy::").unwrap().to_ascii_lowercase()
     }
 }
 
@@ -129,8 +129,7 @@ macro_rules! declare_crushy_lint_inner {
     ) => {
         $crate::rustc_session::declare_tool_lint! {
             $(#[doc = $docs])*
-            #[crushy::version = $version]
-            $vis crushy::$lint_name,
+            $vis clippy::$lint_name,
             $level,
             $desc,
             report_in_external_macro:true
