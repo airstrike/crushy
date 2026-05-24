@@ -22,7 +22,7 @@ declare_crushy_lint! {
     /// `some_crate::Foo` at the call site.
     #[crushy::version = "0.1.0"]
     pub USE_AS_RENAME,
-    style,
+    restriction,
     "use of `use ... as Name` import alias"
 }
 
