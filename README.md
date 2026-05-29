@@ -33,6 +33,7 @@ Configure individual lints with standard rustc attributes:
 
 | Lint | Category | Default | What it flags |
 |---|---|---|---|
+| `crushy::deep_path` | style | warn | inline paths with 4+ segments (e.g. `a::b::c::d()`) — bring the item into scope with `use` |
 | `crushy::length_fill` | style | warn | `Length::Fill` and `Length::Fixed(_)` — use `iced::Fill` or bare numbers |
 | `crushy::use_as_rename` | restriction | allow | `use ... as Name` import aliases (`as _` and `as self` exempt) |
 

@@ -22,6 +22,7 @@ use crushy_config::{Conf, get_configuration_metadata, sanitize_explanation};
 pub mod declared_lints;
 pub mod deprecated_lints;
 
+mod deep_path;
 mod length_fill;
 mod use_as_rename;
 
@@ -54,6 +55,7 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
         store.register_removed(name, reason);
     }
 
+    store.register_early_pass(|| Box::new(deep_path::DeepPath));
     store.register_early_pass(|| Box::new(length_fill::LengthFill));
     store.register_early_pass(|| Box::new(use_as_rename::UseAsRename));
 }
