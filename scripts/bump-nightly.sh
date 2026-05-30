@@ -6,7 +6,7 @@
 # Steps:
 #   1. Tag the current commit with the CURRENT pin (keeps the old nightly
 #      installable from history).
-#   2. `cargo dev sync update-nightly` rewrites the pin to today's date.
+#   2. `cargo dev sync update_nightly` rewrites the pin to today's date.
 #   3. Sync the concrete dates in README.md.
 #   4. Install the new toolchain and verify crushy still builds against it.
 #   5. On success, commit the bump.
@@ -47,7 +47,7 @@ else
 fi
 
 # 2. Rewrite the pin to today.
-cargo dev sync update-nightly
+cargo dev sync update_nightly
 NEW=$(grep -oE 'nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}' "$PIN_FILE" | head -1)
 emit new "$NEW"
 if [ "$NEW" = "$OLD" ]; then
