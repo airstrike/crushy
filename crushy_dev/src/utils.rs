@@ -275,7 +275,7 @@ impl CrushyInfo {
             if let Some(mut file) = File::open_if_exists(&path, OpenOptions::new().read(true)) {
                 file.read_to_cleared_string(&mut buf);
                 let package = parse_cargo_package(&buf);
-                if package.name == "\"clippy\"" {
+                if package.name == "\"crushy\"" {
                     if let Some(version) = buf[package.version_range].strip_prefix('"')
                         && let Some(version) = version.strip_suffix('"')
                         && let Ok(version) = version.parse()
@@ -287,14 +287,14 @@ impl CrushyInfo {
                             has_intellij_hook: !package.not_a_platform_range.is_empty(),
                         };
                     }
-                    panic!("error reading clippy version from `{}`", file.path.display());
+                    panic!("error reading crushy version from `{}`", file.path.display());
                 }
             }
 
             path.pop();
             assert!(
                 path.pop(),
-                "error finding project root, please run from inside the clippy directory"
+                "error finding project root, please run from inside the crushy directory"
             );
         }
     }
