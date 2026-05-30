@@ -62,7 +62,7 @@ sed -i.bak "s/$OLD/$NEW/g" README.md && rm -f README.md.bak
 
 # 4. Install the new toolchain (with the components crushy needs).
 if ! rustup toolchain install "$NEW" --profile minimal \
-	--component rustc-dev rust-src llvm-tools rustfmt; then
+	-c rustc-dev -c rust-src -c llvm-tools -c rustfmt; then
 	echo "error: could not install $NEW (not published yet?)" >&2
 	emit status unavailable
 	[ "$CI" -eq 1 ] && exit 0 || exit 1
