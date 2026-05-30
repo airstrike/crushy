@@ -1,0 +1,81 @@
+name: Bump nightly
+
+# Advances the pinned nightly on a schedule, following the master-tracks-latest,
+# tag-per-nightly scheme. The job builds crushy against the new nightly itself,
+# so the PR it opens is already verified; if the build breaks (rustc_private API
+# drift) it files an issue instead.
+
+on:
+  schedule:
+    - cron: '0 12 * * 1' # Mondays, 12:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: nightly-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history to create the outgoing-pin tag
+
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Bump pin and verify build
+        id: bump
+        run: ./scripts/bump-nightly.sh --ci
+
+      - name: Push outgoing-pin tag
+        if: steps.bump.outputs.status == 'bumped'
+        run: git push origin "refs/tags/${{ steps.bump.outputs.old }}"
+
+      - name: Open bump PR
+        if: steps.bump.outputs.status == 'bumped'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bump-nightly
+          delete-branch: true
+          title: "chore: bump pinned nightly to ${{ steps.bump.outputs.new }}"
+          commit-message: "chore: bump pinned nightly to ${{ steps.bump.outputs.new }}"
+          add-paths: |
+            rust-toolchain.toml
+            crushy_utils/README.md
+            README.md
+          body: |
+            Automated nightly bump `${{ steps.bump.outputs.old }}` → `${{ steps.bump.outputs.new }}`.
+
+            This job already verified `cargo build --release` against the new nightly.
+            The outgoing pin is preserved as tag `${{ steps.bump.outputs.old }}`.
+
+            After merging, reinstall locally with `cargo install --path . --force`.
+
+      - name: File porting issue
+        if: steps.bump.outputs.status == 'broken'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const old = '${{ steps.bump.outputs.old }}';
+            const neu = '${{ steps.bump.outputs.new }}';
+            const title = `Nightly ${neu} breaks the build — source needs porting`;
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'nightly-bump',
+            });
+            if (open.some(i => i.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title,
+              labels: ['nightly-bump'],
+              body: `Bumping the pin from \`${old}\` to \`${neu}\` fails \`cargo build --release\`. `
+                  + `The \`rustc_private\` API likely changed; port the source, then run `
+                  + `\`scripts/bump-nightly.sh\` locally to land the bump.`,
+            });
