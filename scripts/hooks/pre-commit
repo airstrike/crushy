@@ -1,0 +1,42 @@
+#!/bin/sh
+# crushy pre-commit hook. Enable with:
+#   git config core.hooksPath scripts/hooks
+
+# Format + lint staged Rust changes (runs under the pinned toolchain).
+if git diff --cached --name-only | grep -q '\.rs$'; then
+	echo "Running cargo fmt --check..."
+	if ! cargo fmt --all --check; then
+		echo "ERROR: formatting check failed. Run 'cargo fmt --all' to fix."
+		exit 1
+	fi
+	echo "Running cargo clippy..."
+	if ! cargo clippy --workspace --all-targets -- -D warnings; then
+		echo "ERROR: clippy found issues."
+		exit 1
+	fi
+fi
+
+# Block NEW mod.rs files — use the Rust 2018 idiom (foo.rs + foo/).
+# Only added files are checked; the inherited substrate keeps its mod.rs.
+new_mod=$(git diff --cached --name-only --diff-filter=A | grep '/mod\.rs$' || true)
+if [ -n "$new_mod" ]; then
+	echo "ERROR: new mod.rs files are not allowed; use foo.rs + foo/ instead."
+	echo "$new_mod" | sed 's/^/  /'
+	exit 1
+fi
+
+# Restrict root-level .md files to an allow list (subdirectories are exempt).
+ALLOWED_ROOT_MD="README.md CONTRIBUTING.md ARCHITECTURE.md CHANGELOG.md"
+bad_md=""
+for f in $(git diff --cached --name-only | grep '\.md$'); do
+	case "$f" in */*) continue ;; esac
+	case " $ALLOWED_ROOT_MD " in
+		*" $f "*) ;;
+		*) bad_md="$bad_md  $f\n" ;;
+	esac
+done
+if [ -n "$bad_md" ]; then
+	echo "ERROR: only $ALLOWED_ROOT_MD are allowed at the repo root."
+	printf "$bad_md"
+	exit 1
+fi

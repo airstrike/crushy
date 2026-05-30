@@ -1,0 +1,35 @@
+#!/bin/sh
+# crushy pre-push hook. Enable with:
+#   git config core.hooksPath scripts/hooks
+set -e
+
+# Block pushing commits that mention "Claude" (no AI attribution in history).
+while read local_ref local_sha remote_ref remote_sha; do
+	[ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+	if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+		range="$local_sha"
+	else
+		range="$remote_sha..$local_sha"
+	fi
+	if git log --format='%s%n%b' "$range" | grep -qi "claude"; then
+		echo "ERROR: a commit message/body mentions 'Claude'. Clean up before pushing."
+		git log --format='  %h %s' "$range" | grep -i "claude"
+		exit 1
+	fi
+done
+
+echo "Running cargo audit..."
+if ! cargo audit; then
+	echo "ERROR: cargo audit found vulnerabilities. Update affected dependencies."
+	exit 1
+fi
+
+echo "Running cargo fmt --check..."
+if ! cargo fmt --all --check; then
+	echo "ERROR: formatting check failed. Run 'cargo fmt --all' to fix."
+	exit 1
+fi
+
+echo ""
+echo "Tip: watch CI with:"
+echo "  gh run list --limit 1 --json databaseId --jq '.[0].databaseId' | xargs gh run watch --exit-status"
