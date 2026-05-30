@@ -6,7 +6,7 @@ Crushy is a fork of [rust-clippy](https://github.com/rust-lang/rust-clippy) with
 
 ## Requirements
 
-Crushy links against `rustc`'s private internals, which carry no stability guarantee and change between nightlies. `master` pins a specific toolchain in `rust-toolchain.toml` (currently `nightly-2026-05-13`), and Crushy must be **built** with it. To **run** Crushy you only need that nightly toolchain installed — the base toolchain is enough; the `rustc-dev` component is required only to build Crushy itself.
+Crushy links against `rustc`'s private internals, which carry no stability guarantee and change between nightlies. `master` pins a specific toolchain in `rust-toolchain.toml` (currently `nightly-2026-05-30`), and Crushy must be **built** with it. To **run** Crushy you only need that nightly toolchain installed — the base toolchain is enough; the `rustc-dev` component is required only to build Crushy itself.
 
 **Your own project does not need to use nightly.** Crushy is a separate lint pass, like Clippy: it compiles your code with its pinned-nightly `rustc` for that one pass (nightly is a superset of stable, so stable code builds fine), while your normal `cargo build` stays on whatever toolchain you target. See [Linting a stable project](#linting-a-stable-project).
 
@@ -46,7 +46,7 @@ cargo crushy --explain deep_path
 Your project can stay pinned to stable (or any toolchain) for its own builds. Run Crushy through the pinned nightly explicitly, which is what lets the dynamic linker find the driver's `librustc_driver`:
 
 ```sh
-cargo +nightly-2026-05-13 crushy
+cargo +nightly-2026-05-30 crushy
 ```
 
 The override applies only to the Crushy run — your project's `rust-toolchain.toml` and regular `cargo build` are untouched. The only requirement is that your code can compile under that nightly, which ordinary stable code does.
@@ -56,7 +56,7 @@ The override applies only to the Crushy run — your project's `rust-toolchain.t
 `master` always tracks the latest supported nightly. Each previous pin is preserved as a `nightly-YYYY-MM-DD` git tag, so if your toolchain matches an older one, build Crushy from that tag instead:
 
 ```sh
-git checkout nightly-2026-05-13
+git checkout nightly-2026-05-30
 cargo install --path . --force
 ```
 
