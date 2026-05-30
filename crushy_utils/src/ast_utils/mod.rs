@@ -2,7 +2,6 @@
 //!
 //! - The `eq_foobar` functions test for semantic equality but ignores `NodeId`s and `Span`s.
 
-
 use crate::{both, over};
 use rustc_ast::{self as ast, HasAttrs, *};
 use rustc_span::sym;

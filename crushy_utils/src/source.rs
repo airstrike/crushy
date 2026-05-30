@@ -1,6 +1,5 @@
 //! Utils for extracting, inspecting or transforming source code
 
-
 use std::sync::Arc;
 
 use rustc_ast::{LitKind, StrStyle};

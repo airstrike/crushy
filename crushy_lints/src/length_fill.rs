@@ -83,7 +83,5 @@ fn emit(cx: &EarlyContext<'_>, span: Span, msg: &'static str, help: &'static str
 fn last_two(path: &Path, penultimate: &str, last: &str) -> bool {
     let segs = &path.segments;
     let n = segs.len();
-    n >= 2
-        && segs[n - 2].ident.as_str() == penultimate
-        && segs[n - 1].ident.as_str() == last
+    n >= 2 && segs[n - 2].ident.as_str() == penultimate && segs[n - 1].ident.as_str() == last
 }

@@ -1,6 +1,5 @@
 //! Util methods for [`rustc_middle::ty`]
 
-
 use core::ops::ControlFlow;
 use rustc_abi::VariantIdx;
 use rustc_ast::ast::Mutability;

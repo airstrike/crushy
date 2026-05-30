@@ -56,9 +56,9 @@ impl EarlyLintPass for DeepPath {
 
     fn check_pat(&mut self, cx: &EarlyContext<'_>, pat: &Pat) {
         match &pat.kind {
-            PatKind::Path(qself, path)
-            | PatKind::Struct(qself, path, ..)
-            | PatKind::TupleStruct(qself, path, ..) => check_path(cx, qself, path),
+            PatKind::Path(qself, path) | PatKind::Struct(qself, path, ..) | PatKind::TupleStruct(qself, path, ..) => {
+                check_path(cx, qself, path)
+            },
             _ => {},
         }
     }

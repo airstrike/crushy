@@ -1,6 +1,5 @@
 //! This module contains functions that retrieve specific elements.
 
-
 use crate::consts::{ConstEvalCtxt, Constant};
 use crate::res::MaybeDef;
 use crate::{is_expn_of, sym};

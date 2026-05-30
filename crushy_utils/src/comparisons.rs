@@ -1,6 +1,5 @@
 //! Utility functions for comparison operators.
 
-
 use rustc_hir::{BinOpKind, Expr};
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]

@@ -179,8 +179,16 @@ impl rustc_driver::Callbacks for CrushyCallbacks {
         // Inject `#![feature(register_tool)] #![register_tool(crushy)]` into every
         // crate so that `#[crushy::*]` tool attributes resolve. Without this the
         // only predefined tools are clippy/rustfmt/miri/diagnostic/rust_analyzer.
-        config.opts.unstable_opts.crate_attr.push("feature(register_tool)".to_string());
-        config.opts.unstable_opts.crate_attr.push("register_tool(crushy)".to_string());
+        config
+            .opts
+            .unstable_opts
+            .crate_attr
+            .push("feature(register_tool)".to_string());
+        config
+            .opts
+            .unstable_opts
+            .crate_attr
+            .push("register_tool(crushy)".to_string());
     }
 }
 
