@@ -23,7 +23,9 @@ pub mod declared_lints;
 pub mod deprecated_lints;
 
 mod deep_path;
+mod imported_message;
 mod length_fill;
+mod message_naming;
 mod use_as_rename;
 
 pub fn explain(name: &str) -> i32 {
@@ -56,6 +58,8 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
     }
 
     store.register_early_pass(|| Box::new(deep_path::DeepPath));
+    store.register_early_pass(|| Box::new(imported_message::ImportedMessage));
     store.register_early_pass(|| Box::new(length_fill::LengthFill));
+    store.register_early_pass(|| Box::new(message_naming::MessageNaming));
     store.register_early_pass(|| Box::new(use_as_rename::UseAsRename));
 }
