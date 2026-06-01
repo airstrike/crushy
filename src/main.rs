@@ -1,10 +1,11 @@
-// We need this feature as it changes `dylib` linking behavior and allows us to link to
-// `rustc_driver`.
-#![feature(rustc_private)]
+// `cargo-crushy` is a thin launcher: it sets `RUSTC_WORKSPACE_WRAPPER` and runs
+// cargo. It deliberately links NO rustc internals (`rustc_driver`, `crushy_lints`)
+// so it can launch under any consumer toolchain, then force crushy's matching
+// toolchain for the actual check. Everything rustc-linked lives in `crushy-driver`.
 // warn on lints, that are included in `rust-lang/rust`s bootstrap
 #![warn(rust_2018_idioms, unused_lifetimes)]
 
-extern crate rustc_driver;
+mod toolchain;
 
 use std::env;
 use std::io::Write as _;
@@ -13,14 +14,14 @@ use std::process::{self, Command, exit};
 
 fn show_help() {
     if writeln!(&mut anstream::stdout().lock(), "{}", help_message()).is_err() {
-        exit(rustc_driver::EXIT_FAILURE);
+        exit(1);
     }
 }
 
 fn show_version() {
     let version_info = rustc_tools_util::get_version_info!();
     if writeln!(&mut anstream::stdout().lock(), "{version_info}").is_err() {
-        exit(rustc_driver::EXIT_FAILURE);
+        exit(1);
     }
 }
 
@@ -37,11 +38,8 @@ pub fn main() {
     }
 
     if let Some(pos) = env::args().position(|a| a == "--explain") {
-        if let Some(mut lint) = env::args().nth(pos + 1) {
-            lint.make_ascii_lowercase();
-            process::exit(crushy_lints::explain(
-                &lint.strip_prefix("crushy::").unwrap_or(&lint).replace('-', "_"),
-            ));
+        if let Some(lint) = env::args().nth(pos + 1) {
+            process::exit(explain_via_driver(&lint));
         } else {
             show_help();
         }
@@ -97,20 +95,7 @@ impl CrushyCmd {
         }
     }
 
-    fn path() -> PathBuf {
-        let mut path = env::current_exe()
-            .expect("current executable path invalid")
-            .with_file_name("crushy-driver");
-
-        if cfg!(windows) {
-            path.set_extension("exe");
-        }
-
-        path
-    }
-
     fn into_std_cmd(self) -> Command {
-        let mut cmd = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
         let crushy_args: String = self
             .crushy_args
             .iter()
@@ -119,7 +104,34 @@ impl CrushyCmd {
         // Currently, `CRUSHY_TERMINAL_WIDTH` is used only to format "unknown field" error messages.
         let terminal_width = termize::dimensions().map_or(0, |(w, _)| w);
 
-        cmd.env("RUSTC_WORKSPACE_WRAPPER", Self::path())
+        // The driver is ABI-locked to the toolchain crushy was built with. When
+        // the consumer is on a different toolchain, run the inner cargo under
+        // crushy's via `rustup run`, so both cargo and the driver
+        // (RUSTC_WORKSPACE_WRAPPER) resolve the matching librustc_driver. When
+        // already compatible (or explicitly pinned), reuse the invoking cargo.
+        let mut cmd = match toolchain::force() {
+            Some(tk) => {
+                // Run the inner cargo via `rustup run <tk>`, which sets PATH and
+                // the dylib search path to crushy's toolchain so the driver
+                // (RUSTC_WORKSPACE_WRAPPER) finds its librustc_driver. A bare
+                // `cargo` can't be trusted: the invoking cargo may have put a
+                // non-proxy toolchain's cargo first on PATH, which sets no dylib
+                // path at all. Clear the inherited concrete RUSTC/CARGO (a
+                // concrete RUSTC would keep the consumer's rustc and sysroot)
+                // and export RUSTUP_TOOLCHAIN so any nested proxy agrees.
+                let mut cmd = Command::new("rustup");
+                cmd.arg("run")
+                    .arg(&tk)
+                    .arg("cargo")
+                    .env("RUSTUP_TOOLCHAIN", &tk)
+                    .env_remove("RUSTC")
+                    .env_remove("CARGO");
+                cmd
+            },
+            None => Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into())),
+        };
+
+        cmd.env("RUSTC_WORKSPACE_WRAPPER", driver_path())
             .env("CRUSHY_ARGS", crushy_args)
             .env("CRUSHY_TERMINAL_WIDTH", terminal_width.to_string())
             .arg(self.cargo_subcommand)
@@ -127,6 +139,34 @@ impl CrushyCmd {
 
         cmd
     }
+}
+
+/// Path to the sibling `crushy-driver` binary (installed alongside this one).
+fn driver_path() -> PathBuf {
+    let mut path = env::current_exe()
+        .expect("current executable path invalid")
+        .with_file_name("crushy-driver");
+
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+
+    path
+}
+
+/// Print a lint's docs by delegating to `crushy-driver --explain` under crushy's
+/// toolchain. The driver links `crushy_lints`; this launcher must not (so it can
+/// start under any toolchain), hence `rustup run` to load the matching driver.
+fn explain_via_driver(lint: &str) -> i32 {
+    Command::new("rustup")
+        .args(["run", toolchain::pinned_nightly()])
+        .arg(driver_path())
+        .arg("--explain")
+        .arg(lint)
+        .status()
+        .ok()
+        .and_then(|s| s.code())
+        .unwrap_or(1)
 }
 
 fn process<I>(old_args: I) -> Result<(), i32>

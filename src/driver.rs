@@ -270,6 +270,22 @@ fn main() -> ExitCode {
             };
         }
 
+        // `crushy-driver --explain <lint>` prints a lint's documentation.
+        // `cargo-crushy` delegates here (running us under crushy's toolchain)
+        // because it stays free of `crushy_lints`/rustc internals so it can
+        // launch under any consumer toolchain; this binary already links them.
+        if let Some(pos) = orig_args.iter().position(|a| a == "--explain") {
+            let code = match orig_args.get(pos + 1) {
+                Some(arg) => {
+                    let lint = arg.to_ascii_lowercase();
+                    let lint = lint.strip_prefix("crushy::").unwrap_or(&lint).replace('-', "_");
+                    crushy_lints::explain(&lint)
+                },
+                None => 1,
+            };
+            return ExitCode::from(u8::try_from(code).unwrap_or(1));
+        }
+
         // Setting RUSTC_WRAPPER causes Cargo to pass 'rustc' as the first argument.
         // We're invoking the compiler programmatically, so we ignore this/
         let wrapper_mode = orig_args.get(1).map(Path::new).and_then(Path::file_stem) == Some("rustc".as_ref());
