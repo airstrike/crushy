@@ -22,6 +22,8 @@ use crushy_config::{Conf, get_configuration_metadata, sanitize_explanation};
 pub mod declared_lints;
 pub mod deprecated_lints;
 
+mod container_align_helper;
+mod container_combine_align;
 mod deep_path;
 mod imported_message;
 mod length_fill;
@@ -57,6 +59,8 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
         store.register_removed(name, reason);
     }
 
+    store.register_early_pass(|| Box::new(container_align_helper::ContainerAlignHelper::default()));
+    store.register_early_pass(|| Box::new(container_combine_align::ContainerCombineAlign));
     store.register_early_pass(|| Box::new(deep_path::DeepPath));
     store.register_early_pass(|| Box::new(imported_message::ImportedMessage));
     store.register_early_pass(|| Box::new(length_fill::LengthFill));
