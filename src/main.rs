@@ -125,7 +125,12 @@ impl CrushyCmd {
                     .arg("cargo")
                     .env("RUSTUP_TOOLCHAIN", &tk)
                     .env_remove("RUSTC")
-                    .env_remove("CARGO");
+                    .env_remove("CARGO")
+                    // Isolate crushy's artifacts from the consumer's `target/`
+                    // (used by `cargo build`/`cargo clippy` under *their*
+                    // toolchain) so the two toolchains don't invalidate each
+                    // other's caches on every alternation.
+                    .env("CARGO_TARGET_DIR", forced_target_dir());
                 cmd
             },
             None => Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into())),
@@ -138,6 +143,17 @@ impl CrushyCmd {
             .args(&self.args);
 
         cmd
+    }
+}
+
+/// Where crushy puts build artifacts when it forces its own toolchain — kept
+/// separate from the consumer's `target/` (used by `cargo build`/`cargo clippy`
+/// under their toolchain) so the two never invalidate each other. Nests under an
+/// explicit `CARGO_TARGET_DIR` when the consumer set one.
+fn forced_target_dir() -> PathBuf {
+    match env::var_os("CARGO_TARGET_DIR") {
+        Some(base) => PathBuf::from(base).join("crushy"),
+        None => PathBuf::from("target/crushy"),
     }
 }
 
