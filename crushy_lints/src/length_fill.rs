@@ -1,6 +1,7 @@
-use crushy_utils::diagnostics::span_lint_and_help;
+use crushy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use rustc_ast::{Expr, ExprKind, Path};
-use rustc_lint::{EarlyContext, EarlyLintPass};
+use rustc_errors::Applicability;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_session::declare_lint_pass;
 use rustc_span::Span;
 
@@ -60,16 +61,32 @@ fn check_arg(cx: &EarlyContext<'_>, arg: &Expr) {
                 "import `iced::Fill` and pass `Fill` directly",
             );
         },
-        ExprKind::Call(callee, _) => {
+        ExprKind::Call(callee, args) => {
             if let ExprKind::Path(_, path) = &callee.kind
                 && last_two(path, "Length", "Fixed")
+                && let [inner] = &args[..]
             {
-                emit(
-                    cx,
-                    arg.span,
-                    "use a bare number instead of `Length::Fixed(_)`",
-                    "iced length-accepting methods take `impl Into<Length>`, so e.g. `.width(20)` works",
-                );
+                let msg = "use a bare number instead of `Length::Fixed(_)`";
+                // `Length::Fixed(x)` -> `x`: iced length methods take
+                // `impl Into<Length>` and `f32: Into<Length>`, so the inner
+                // number stands on its own. Machine-applicable.
+                match cx.sess().source_map().span_to_snippet(inner.span) {
+                    Ok(number) => span_lint_and_sugg(
+                        cx,
+                        LENGTH_FILL,
+                        arg.span,
+                        msg,
+                        "use the number directly",
+                        number,
+                        Applicability::MachineApplicable,
+                    ),
+                    Err(_) => emit(
+                        cx,
+                        arg.span,
+                        msg,
+                        "iced length-accepting methods take `impl Into<Length>`, so e.g. `.width(20)` works",
+                    ),
+                }
             }
         },
         _ => {},
