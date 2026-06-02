@@ -1,0 +1,21 @@
+#!/bin/sh
+# crushy post-commit hook. Enable with:
+#   git config core.hooksPath scripts/hooks
+#
+# Why this exists: cargo fingerprints a check by rustc version + wrapper path +
+# RUSTFLAGS + source — NOT by crushy-driver's *contents*. So once crushy's lint
+# code changes (and you rebuild/reinstall), `cargo crushy` on an unchanged crate
+# replays cargo's CACHED warnings instead of re-linting. Results look stale until
+# the cache is busted. (Clippy avoids this only because it ships inside the
+# toolchain, so updating it changes the rustc version + wrapper path.)
+
+# Only nag when this commit actually touched Rust sources (i.e. the driver may
+# now behave differently).
+if git diff-tree --no-commit-id --name-only -r HEAD | grep -q '\.rs$'; then
+	echo ""
+	echo "note: crushy's code changed — rebuild/reinstall, then know that"
+	echo "      'cargo crushy' on an unchanged crate may show STALE (cached) lints."
+	echo "      Force a fresh run with whichever target it used:"
+	echo "        rm -rf target/crushy   # crushy's own dir (consumer on a different toolchain)"
+	echo "        cargo clean            # shared target/ (consumer pinned to crushy's toolchain)"
+fi
