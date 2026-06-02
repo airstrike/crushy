@@ -54,11 +54,16 @@ impl EarlyLintPass for LengthFill {
 fn check_arg(cx: &EarlyContext<'_>, arg: &Expr) {
     match &arg.kind {
         ExprKind::Path(_, path) if last_two(path, "Length", "Fill") => {
-            emit(
+            // `Fill` needs to be imported, so show the rewrite as a suggestion
+            // rustc renders but `--fix` won't auto-apply (Unspecified).
+            span_lint_and_sugg(
                 cx,
+                LENGTH_FILL,
                 arg.span,
                 "use `Fill` from `iced` instead of `Length::Fill`",
-                "import `iced::Fill` and pass `Fill` directly",
+                "import `iced::Fill` and use it directly",
+                "Fill".to_string(),
+                Applicability::Unspecified,
             );
         },
         ExprKind::Call(callee, args) => {

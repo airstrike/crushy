@@ -1,6 +1,7 @@
-use crushy_utils::diagnostics::span_lint_and_help;
+use crushy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use rustc_ast::{Expr, ExprKind};
-use rustc_lint::{EarlyContext, EarlyLintPass};
+use rustc_errors::Applicability;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_session::declare_lint_pass;
 
 declare_crushy_lint! {
@@ -68,14 +69,33 @@ impl EarlyLintPass for ContainerCombineAlign {
         } else {
             "height(…).align_y"
         };
-        span_lint_and_help(
-            cx,
-            CONTAINER_COMBINE_ALIGN,
-            expr.span,
-            format!("`.{split}(…)` on a container is `.{method}(…)`"),
-            None,
-            format!("set length and alignment in one call with `.{method}(…)`"),
-        );
+        let msg = format!("`.{split}(…)` on a container is `.{method}(…)`");
+        // `center_x`/`align_left`/... are Container methods (no import), so this
+        // is a clean machine-applicable rewrite: `<recv>.<method>(<len>)`.
+        let length_args = if align_is_outer { &inner.args } else { &outer.args };
+        let sm = cx.sess().source_map();
+        if let (Ok(recv), Some(len)) = (sm.span_to_snippet(inner.receiver.span), length_args.first())
+            && let Ok(len) = sm.span_to_snippet(len.span)
+        {
+            span_lint_and_sugg(
+                cx,
+                CONTAINER_COMBINE_ALIGN,
+                expr.span,
+                msg,
+                "combine length and alignment in one call",
+                format!("{recv}.{method}({len})"),
+                Applicability::MachineApplicable,
+            );
+        } else {
+            span_lint_and_help(
+                cx,
+                CONTAINER_COMBINE_ALIGN,
+                expr.span,
+                msg,
+                None,
+                format!("set length and alignment in one call with `.{method}(…)`"),
+            );
+        }
     }
 }
 

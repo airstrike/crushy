@@ -1,6 +1,7 @@
-use crushy_utils::diagnostics::span_lint_and_help;
+use crushy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use rustc_ast::{Expr, ExprKind};
-use rustc_lint::{EarlyContext, EarlyLintPass};
+use rustc_errors::Applicability;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
@@ -48,21 +49,35 @@ impl EarlyLintPass for ContainerAlignHelper {
         if self.emitted.iter().any(|s| s.contains(expr.span)) {
             return;
         }
-        let Some(methods) = container_align_chain(expr) else {
+        let Some((methods, content)) = container_align_chain(expr) else {
             return;
         };
         let Some(helper) = helper_for(&methods) else {
             return;
         };
         self.emitted.push(expr.span);
-        span_lint_and_help(
-            cx,
-            CONTAINER_ALIGN_HELPER,
-            expr.span,
-            format!("this `container(…)` alignment chain is `iced::widget::{helper}`"),
-            None,
-            format!("replace it with `{helper}(…)`"),
-        );
+        let msg = format!("this `container(…)` alignment chain is `iced::widget::{helper}`");
+        // The helper isn't necessarily imported, so show the rewrite as a
+        // suggestion rustc renders but `--fix` won't auto-apply (Unspecified).
+        match cx.sess().source_map().span_to_snippet(content.span) {
+            Ok(content) => span_lint_and_sugg(
+                cx,
+                CONTAINER_ALIGN_HELPER,
+                expr.span,
+                msg,
+                format!("use `{helper}` (import it from `iced::widget`)"),
+                format!("{helper}({content})"),
+                Applicability::Unspecified,
+            ),
+            Err(_) => span_lint_and_help(
+                cx,
+                CONTAINER_ALIGN_HELPER,
+                expr.span,
+                msg,
+                None,
+                format!("replace it with `{helper}(…)`"),
+            ),
+        }
     }
 }
 
@@ -92,7 +107,7 @@ impl Align {
 /// The fill-alignment methods chained directly onto an inline `container(_)`,
 /// or `None` if `expr` isn't such a chain (every method must be a recognized
 /// alignment method taking a single `Fill`, and the base must be `container(x)`).
-fn container_align_chain(expr: &Expr) -> Option<Vec<Align>> {
+fn container_align_chain(expr: &Expr) -> Option<(Vec<Align>, &Expr)> {
     let mut methods = Vec::new();
     let mut e = expr;
     loop {
@@ -107,7 +122,7 @@ fn container_align_chain(expr: &Expr) -> Option<Vec<Align>> {
             },
             ExprKind::Call(callee, args) => {
                 let is_container = path_tail(callee) == Some("container") && args.len() == 1;
-                return (is_container && !methods.is_empty()).then_some(methods);
+                return (is_container && !methods.is_empty()).then(|| (methods, &*args[0]));
             },
             _ => return None,
         }
