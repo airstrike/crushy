@@ -15,8 +15,9 @@ declare_crushy_lint! {
     /// dependency surface. Bringing the item into scope with a `use` import keeps
     /// call sites short and the imports visible at the top of the file.
     ///
-    /// Turbofish generics (`::<T>`) don't count as segments, and macro-generated
-    /// paths (`$crate::...`) are skipped.
+    /// Turbofish generics (`::<T>`) don't count as segments; macro-generated
+    /// paths (`$crate::...`), build-script `OUT_DIR` includes, and paths rooted
+    /// at the standard library (`std`/`core`/`alloc`) are skipped.
     ///
     /// ### Example
     /// ```rust,ignore
@@ -77,11 +78,17 @@ fn check_path(cx: &EarlyContext<'_>, qself: &Option<Box<QSelf>>, path: &Path) {
     let start = qself.as_ref().map_or(0, |q| q.position);
     // The leading `{{root}}` segment of a global `::a::b` path isn't a real
     // segment; exclude it so counting matches the `\w+::\w+::...` regex.
-    let segments = path.segments[start..]
+    let real: Vec<_> = path.segments[start..]
         .iter()
         .filter(|seg| seg.ident.name != kw::PathRoot)
-        .count();
-    if segments <= MAX_SEGMENTS {
+        .collect();
+    if real.len() <= MAX_SEGMENTS {
+        return;
+    }
+    // Standard-library paths (`std::process::Command::new`, `core::mem::swap`, …)
+    // are idiomatic inline; importing them is optional, not a smell. Skip any
+    // path rooted at a std-facade crate.
+    if matches!(real[0].ident.as_str(), "std" | "core" | "alloc") {
         return;
     }
     // Skip build-script output (`include!`d from `OUT_DIR`, under `target/`):
