@@ -9,7 +9,7 @@ mod toolchain;
 
 use std::env;
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command, exit};
 
 fn show_help() {
@@ -148,13 +148,35 @@ impl CrushyCmd {
 
 /// Where crushy puts build artifacts when it forces its own toolchain — kept
 /// separate from the consumer's `target/` (used by `cargo build`/`cargo clippy`
-/// under their toolchain) so the two never invalidate each other. Nests under an
-/// explicit `CARGO_TARGET_DIR` when the consumer set one.
+/// under their toolchain) so the two never invalidate each other.
+///
+/// Anchored at the workspace's target dir (absolute), not a cwd-relative
+/// `target/crushy`: in a workspace a relative path scatters into whichever
+/// member dir crushy was invoked from, so `rm -rf target/crushy` from the root
+/// wouldn't find it. Respects an explicit `CARGO_TARGET_DIR` if set.
 fn forced_target_dir() -> PathBuf {
-    match env::var_os("CARGO_TARGET_DIR") {
-        Some(base) => PathBuf::from(base).join("crushy"),
+    if let Some(base) = env::var_os("CARGO_TARGET_DIR") {
+        return PathBuf::from(base).join("crushy");
+    }
+    match workspace_root() {
+        Some(root) => root.join("target").join("crushy"),
         None => PathBuf::from("target/crushy"),
     }
+}
+
+/// The workspace root (parent of the workspace `Cargo.toml`), via
+/// `cargo locate-project`. `None` if it can't be determined.
+fn workspace_root() -> Option<PathBuf> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(cargo)
+        .args(["locate-project", "--workspace", "--message-format", "plain"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let manifest = String::from_utf8(out.stdout).ok()?;
+    Path::new(manifest.trim()).parent().map(Path::to_path_buf)
 }
 
 /// Path to the sibling `crushy-driver` binary (installed alongside this one).
