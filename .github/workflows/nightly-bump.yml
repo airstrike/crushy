@@ -39,6 +39,7 @@ jobs:
         run: git push origin "refs/tags/${{ steps.bump.outputs.old }}"
 
       - name: Open bump PR
+        id: cpr
         if: steps.bump.outputs.status == 'bumped'
         uses: peter-evans/create-pull-request@v8
         with:
@@ -51,12 +52,13 @@ jobs:
             crushy_utils/README.md
             README.md
           body: |
-            Automated nightly bump `${{ steps.bump.outputs.old }}` → `${{ steps.bump.outputs.new }}`.
+            Automated PR: tag `${{ steps.bump.outputs.old }}` and bump it to `${{ steps.bump.outputs.new }}`.
 
-            This job already verified `cargo build --release` against the new nightly.
-            The outgoing pin is preserved as tag `${{ steps.bump.outputs.old }}`.
-
-            After merging, reinstall locally with `cargo install --path . --force`.
+      - name: Auto-merge bump PR
+        if: steps.bump.outputs.status == 'bumped' && steps.cpr.outputs.pull-request-number
+        run: gh pr merge --squash --delete-branch "${{ steps.cpr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: File porting issue
         if: steps.bump.outputs.status == 'broken'
