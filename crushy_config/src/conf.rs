@@ -16,7 +16,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::{cmp, env, fmt, fs, io};
@@ -246,7 +246,7 @@ macro_rules! define_Conf {
         #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "kebab-case")]
         #[expect(non_camel_case_types)]
-        enum Field { $($name,)* third_party, }
+        enum Field { $($name,)* third_party, lints, }
 
         struct ConfVisitor<'a>(&'a SourceFile);
 
@@ -300,7 +300,10 @@ macro_rules! define_Conf {
                             })?
                         })*
                         // ignore contents of the third_party key
-                        Field::third_party => drop(map.next_value::<IgnoredAny>())
+                        Field::third_party => drop(map.next_value::<IgnoredAny>()),
+                        // `[lints]` carries lint-level overrides, parsed separately by
+                        // `read_lint_levels` (applied before a `Session` exists).
+                        Field::lints => drop(map.next_value::<IgnoredAny>()),
                     }
                 }
                 let conf = Conf { $($name: $name.unwrap_or_else(defaults::$name),)* };
@@ -974,6 +977,37 @@ pub fn lookup_conf_file() -> io::Result<(Option<PathBuf>, Vec<String>)> {
             return Ok((None, warnings));
         }
     }
+}
+
+/// Read lint-level overrides from the `[lints]` table of a `crushy.toml`:
+///
+/// ```toml
+/// [lints]
+/// length_fill = "allow"
+/// ```
+///
+/// Returns `(lint_name, level)` string pairs (e.g. `("length_fill", "allow")`); the
+/// driver maps these onto compiler lint levels. Parsed independently of [`Conf::read`]
+/// because lint levels must be applied before a compiler `Session` exists. A missing,
+/// unreadable, or malformed file yields an empty list — `Conf::read` is what surfaces
+/// TOML syntax errors with proper diagnostics.
+pub fn read_lint_levels(path: Option<&Path>) -> Vec<(String, String)> {
+    let Some(path) = path else {
+        return Vec::new();
+    };
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&contents) else {
+        return Vec::new();
+    };
+    value
+        .get("lints")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, level)| Some((name.clone(), level.as_str()?.to_string())))
+        .collect()
 }
 
 fn deserialize(file: &SourceFile) -> TryConf {

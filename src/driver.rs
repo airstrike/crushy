@@ -136,6 +136,10 @@ impl rustc_driver::Callbacks for CrushyCallbacks {
     #[expect(rustc::bad_opt_access, reason = "necessary in clippy driver to set `mir_opt_level`")]
     fn config(&mut self, config: &mut interface::Config) {
         let conf_path = crushy_config::lookup_conf_file();
+        // Lint-level overrides from the `[lints]` table of `crushy.toml`. Read here (before a
+        // `Session` exists) so they can be applied as `lint_opts` below; `crushy::*` names resolve
+        // because we register the `crushy` tool in this same callback.
+        let lint_levels = crushy_config::read_lint_levels(conf_path.as_ref().ok().and_then(|(p, _)| p.as_deref()));
         let previous = config.register_lints.take();
         let crushy_args_var = self.crushy_args_var.take();
         config.track_state = Some(Box::new(move |sess| {
@@ -189,7 +193,32 @@ impl rustc_driver::Callbacks for CrushyCallbacks {
             .unstable_opts
             .crate_attr
             .push("register_tool(crushy)".to_string());
+
+        // Apply `[lints]` overrides from `crushy.toml`. Equivalent to passing `-A/-W/-D crushy::<lint>`,
+        // but sourced from a file only crushy reads — so a consumer's normal `cargo build` (which never
+        // registers the `crushy` tool) is untouched.
+        for (name, level) in lint_levels {
+            match parse_lint_level(&level) {
+                Some(level) => config.opts.lint_opts.push((format!("crushy::{name}"), level)),
+                None => eprintln!(
+                    "crushy: ignoring unknown lint level `{level}` for `{name}` in crushy.toml \
+                     (expected `allow`, `warn`, `deny`, or `forbid`)"
+                ),
+            }
+        }
     }
+}
+
+/// Map a `crushy.toml` `[lints]` level string onto a compiler lint level.
+fn parse_lint_level(level: &str) -> Option<rustc_session::lint::Level> {
+    use rustc_session::lint::Level;
+    Some(match level {
+        "allow" => Level::Allow,
+        "warn" => Level::Warn,
+        "deny" => Level::Deny,
+        "forbid" => Level::Forbid,
+        _ => return None,
+    })
 }
 
 fn display_help() -> ExitCode {

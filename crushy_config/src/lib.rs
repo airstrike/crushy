@@ -18,5 +18,5 @@ mod conf;
 mod metadata;
 pub mod types;
 
-pub use conf::{Conf, get_configuration_metadata, lookup_conf_file, sanitize_explanation};
+pub use conf::{Conf, get_configuration_metadata, lookup_conf_file, read_lint_levels, sanitize_explanation};
 pub use metadata::CrushyConfiguration;
