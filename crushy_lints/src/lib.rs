@@ -52,7 +52,7 @@ pub fn explain(name: &str) -> i32 {
     }
 }
 
-pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static Conf) {
+pub fn register_lint_passes(store: &mut rustc_lint::LintStore, conf: &'static Conf) {
     for (old_name, new_name) in deprecated_lints::RENAMED {
         store.register_renamed(old_name, new_name);
     }
@@ -62,7 +62,7 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, _conf: &'static C
 
     store.register_early_pass(|| Box::new(container_align_helper::ContainerAlignHelper::default()));
     store.register_early_pass(|| Box::new(container_combine_align::ContainerCombineAlign));
-    store.register_early_pass(|| Box::new(deep_path::DeepPath));
+    store.register_early_pass(move || Box::new(deep_path::DeepPath::new(conf)));
     store.register_early_pass(|| Box::new(imported_message::ImportedMessage));
     store.register_early_pass(|| Box::new(length_fill::LengthFill));
     store.register_early_pass(|| Box::new(message_naming::MessageNaming));
