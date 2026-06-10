@@ -1,13 +1,15 @@
+use crushy_config::Conf;
 use crushy_utils::diagnostics::span_lint_and_help;
 use rustc_ast::{Expr, ExprKind, Pat, PatKind, Path, QSelf, Ty, TyKind};
 use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
-use rustc_session::declare_lint_pass;
+use rustc_session::impl_lint_pass;
 use rustc_span::symbol::kw;
 use rustc_span::{FileName, Span};
 
 declare_crushy_lint! {
     /// ### What it does
-    /// Flags inline paths with four or more segments (three or more `::`),
+    /// Flags inline paths longer than `deep-path-max-segments` segments (default
+    /// 4, so five or more segments / four or more `::` trip it),
     /// e.g. `some::deeply::nested::name::call_site()`.
     ///
     /// ### Why is this bad?
@@ -18,6 +20,8 @@ declare_crushy_lint! {
     /// Turbofish generics (`::<T>`) don't count as segments; macro-generated
     /// paths (`$crate::...`), build-script `OUT_DIR` includes, and paths rooted
     /// at the standard library (`std`/`core`/`alloc`) are skipped.
+    ///
+    /// The threshold is configurable via `deep-path-max-segments` in `crushy.toml`.
     ///
     /// ### Example
     /// ```rust,ignore
@@ -32,41 +36,52 @@ declare_crushy_lint! {
     #[crushy::version = "0.1.0"]
     pub DEEP_PATH,
     style,
-    "inline path with 4+ segments that should be brought into scope with `use`"
+    "inline path with too many segments that should be brought into scope with `use`"
 }
 
-declare_lint_pass!(DeepPath => [DEEP_PATH]);
+/// Counts inline path segments and lints those longer than `max_segments`.
+/// `max_segments` comes from `deep-path-max-segments` (default 4), so `a::b::c::d`
+/// is fine and a fifth segment trips the lint.
+pub struct DeepPath {
+    max_segments: usize,
+}
 
-/// Maximum number of segments allowed inline. `a::b::c` is fine; a fourth
-/// segment trips the lint. Matches the `\w+::\w+::\w+::\w+` pre-commit rule.
-const MAX_SEGMENTS: usize = 3;
+impl DeepPath {
+    pub fn new(conf: &'static Conf) -> Self {
+        Self {
+            max_segments: conf.deep_path_max_segments as usize,
+        }
+    }
+}
+
+impl_lint_pass!(DeepPath => [DEEP_PATH]);
 
 impl EarlyLintPass for DeepPath {
     fn check_expr(&mut self, cx: &EarlyContext<'_>, expr: &Expr) {
         match &expr.kind {
-            ExprKind::Path(qself, path) => check_path(cx, qself, path),
-            ExprKind::Struct(s) => check_path(cx, &s.qself, &s.path),
+            ExprKind::Path(qself, path) => check_path(cx, qself, path, self.max_segments),
+            ExprKind::Struct(s) => check_path(cx, &s.qself, &s.path, self.max_segments),
             _ => {},
         }
     }
 
     fn check_ty(&mut self, cx: &EarlyContext<'_>, ty: &Ty) {
         if let TyKind::Path(qself, path) = &ty.kind {
-            check_path(cx, qself, path);
+            check_path(cx, qself, path, self.max_segments);
         }
     }
 
     fn check_pat(&mut self, cx: &EarlyContext<'_>, pat: &Pat) {
         match &pat.kind {
             PatKind::Path(qself, path) | PatKind::Struct(qself, path, ..) | PatKind::TupleStruct(qself, path, ..) => {
-                check_path(cx, qself, path)
+                check_path(cx, qself, path, self.max_segments)
             },
             _ => {},
         }
     }
 }
 
-fn check_path(cx: &EarlyContext<'_>, qself: &Option<Box<QSelf>>, path: &Path) {
+fn check_path(cx: &EarlyContext<'_>, qself: &Option<Box<QSelf>>, path: &Path, max_segments: usize) {
     // Skip macro-generated paths — the user can't shorten what they didn't write
     // (this also covers `$crate::...`).
     if path.span.from_expansion() {
@@ -77,12 +92,12 @@ fn check_path(cx: &EarlyContext<'_>, qself: &Option<Box<QSelf>>, path: &Path) {
     // segments after `>::` are shortenable, so start counting from there.
     let start = qself.as_ref().map_or(0, |q| q.position);
     // The leading `{{root}}` segment of a global `::a::b` path isn't a real
-    // segment; exclude it so counting matches the `\w+::\w+::...` regex.
+    // segment; exclude it so counting matches the `\w+::\w+::...` shape.
     let real: Vec<_> = path.segments[start..]
         .iter()
         .filter(|seg| seg.ident.name != kw::PathRoot)
         .collect();
-    if real.len() <= MAX_SEGMENTS {
+    if real.len() <= max_segments {
         return;
     }
     // Standard-library paths (`std::process::Command::new`, `core::mem::swap`, …)

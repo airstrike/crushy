@@ -587,6 +587,11 @@ define_Conf! {
     /// Use the Cognitive Complexity lint instead.
     #[conf_deprecated("Please use `cognitive-complexity-threshold` instead", cognitive_complexity_threshold)]
     cyclomatic_complexity_threshold: u64 = 25,
+    /// The maximum number of segments a path may have inline before `deep_path`
+    /// fires; any path longer than this is linted. The leading `::` root and
+    /// turbofish generics (`::<T>`) don't count.
+    #[lints(deep_path)]
+    deep_path_max_segments: u64 = 4,
     /// The list of disallowed fields, written as fully qualified paths.
     ///
     /// **Fields:**
