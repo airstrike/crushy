@@ -99,10 +99,13 @@ fn track_files(sess: &Session) {
 
     // `crushy.toml` will be automatically tracked as it's loaded with `sess.source_map().load_file()`
 
-    // During development track the `crushy-driver` executable so that cargo will re-run clippy whenever
-    // it is rebuilt
-    if cfg!(debug_assertions)
-        && let Ok(current_exe) = env::current_exe()
+    // Track the `crushy-driver` executable so cargo re-runs the lints whenever it changes. Unlike
+    // upstream clippy (a stable, rarely-rebuilt binary) crushy's driver is rebuilt and reinstalled
+    // often, and a release `cargo install` carries the new lint logic *inside* this binary — nothing
+    // in the consumer's sources changes. Without tracking the exe, cargo's fingerprint is unchanged
+    // and `cargo crushy` replays stale cached diagnostics from `target/crushy`. So track it in release
+    // too, not just `cfg!(debug_assertions)`.
+    if let Ok(current_exe) = env::current_exe()
         && let Some(current_exe) = current_exe.to_str()
     {
         file_depinfo.insert(Symbol::intern(current_exe));
