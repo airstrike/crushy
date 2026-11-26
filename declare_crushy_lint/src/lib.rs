@@ -1,11 +1,9 @@
 #![feature(macro_metavar_expr_concat, rustc_private)]
 
-extern crate rustc_lint;
+// Needed by `declare_crushy_lint!`.
+pub extern crate rustc_lint;
 
 use rustc_lint::{Lint, LintId, LintStore};
-
-// Needed by `declare_crushy_lint!`.
-pub extern crate rustc_session;
 
 #[derive(Default)]
 pub struct LintListBuilder {
@@ -127,7 +125,7 @@ macro_rules! declare_crushy_lint_inner {
         $desc:literal
         $(, @eval_always = $eval_always:literal)?
     ) => {
-        $crate::rustc_session::declare_tool_lint! {
+        $crate::rustc_lint::declare_tool_lint! {
             $(#[doc = $docs])*
             $vis crushy::$lint_name,
             $level,

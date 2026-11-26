@@ -1,7 +1,6 @@
 use crushy_utils::diagnostics::span_lint_and_help;
-use rustc_ast::{Item, ItemKind, UseTree, UseTreeKind};
-use rustc_lint::{EarlyContext, EarlyLintPass};
-use rustc_session::declare_lint_pass;
+use rustc_ast::{Item, ItemKind, UseTree, UseTreeAndId, UseTreeKind};
+use rustc_lint::{EarlyContext, EarlyLintPass, declare_lint_pass};
 use rustc_span::symbol::kw;
 
 declare_crushy_lint! {
@@ -52,7 +51,7 @@ fn check_use_tree(cx: &EarlyContext<'_>, tree: &UseTree) {
             }
         },
         UseTreeKind::Nested { items, .. } => {
-            for (subtree, _) in items {
+            for UseTreeAndId { inner: subtree, .. } in items {
                 check_use_tree(cx, subtree);
             }
         },

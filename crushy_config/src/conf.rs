@@ -1020,15 +1020,15 @@ fn deserialize(file: &SourceFile) -> TryConf {
                 DEFAULT_ALLOWED_TRAITS_WITH_RENAMED_PARAMS,
             );
 
-            // Confirms that the user has not accidentally configured ordering requirements for groups that
-            // aren't configured.
+            // Confirms that the user has not accidentally configured ordering requirements for
+            // groups that aren't configured.
             if let SourceItemOrderingWithinModuleItemGroupings::Custom(groupings) =
                 &conf.conf.module_items_ordered_within_groupings
             {
                 for grouping in groupings {
                     if !conf.conf.module_item_order_groupings.is_grouping(grouping) {
-                        // Since this isn't fixable by rustfix, don't emit a `Suggestion`. This just adds some useful
-                        // info for the user instead.
+                        // Since this isn't fixable by rustfix, don't emit a `Suggestion`. This just
+                        // adds some useful info for the user instead.
 
                         let names = conf.conf.module_item_order_groupings.grouping_names();
                         let suggestion = suggest_candidate(grouping, names.iter().map(String::as_str))
@@ -1166,8 +1166,8 @@ impl serde::de::Error for FieldError {
     }
 
     fn unknown_field(field: &str, expected: &'static [&'static str]) -> Self {
-        // List the available fields sorted and at least one per line, more if `CRUSHY_TERMINAL_WIDTH` is
-        // set and allows it.
+        // List the available fields sorted and at least one per line, more if
+        // `CRUSHY_TERMINAL_WIDTH` is set and allows it.
         use fmt::Write;
 
         let metadata = get_configuration_metadata();
