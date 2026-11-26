@@ -8,6 +8,7 @@
 // (Currently there is no way to opt into sysroot crates without `extern crate`.)
 extern crate rustc_driver;
 extern crate rustc_interface;
+extern crate rustc_lint;
 extern crate rustc_session;
 extern crate rustc_span;
 
@@ -91,20 +92,22 @@ fn track_crushy_args(sess: &Session, args_env_var: Option<&str>) {
 fn track_files(sess: &Session) {
     let mut file_depinfo = sess.file_depinfo.borrow_mut();
 
-    // Used by `crushy::cargo` lints and to determine the MSRV. `cargo crushy` executes `crushy-driver`
-    // with the current directory set to `CARGO_MANIFEST_DIR` so a relative path is fine
+    // Used by `crushy::cargo` lints and to determine the MSRV. `cargo crushy` executes
+    // `crushy-driver` with the current directory set to `CARGO_MANIFEST_DIR` so a relative path is
+    // fine
     if Path::new("Cargo.toml").exists() {
         file_depinfo.insert(sym::Cargo_toml);
     }
 
-    // `crushy.toml` will be automatically tracked as it's loaded with `sess.source_map().load_file()`
+    // `crushy.toml` will be automatically tracked as it's loaded with
+    // `sess.source_map().load_file()`
 
     // Track the `crushy-driver` executable so cargo re-runs the lints whenever it changes. Unlike
     // upstream clippy (a stable, rarely-rebuilt binary) crushy's driver is rebuilt and reinstalled
-    // often, and a release `cargo install` carries the new lint logic *inside* this binary — nothing
-    // in the consumer's sources changes. Without tracking the exe, cargo's fingerprint is unchanged
-    // and `cargo crushy` replays stale cached diagnostics from `target/crushy`. So track it in release
-    // too, not just `cfg!(debug_assertions)`.
+    // often, and a release `cargo install` carries the new lint logic *inside* this binary —
+    // nothing in the consumer's sources changes. Without tracking the exe, cargo's fingerprint is
+    // unchanged and `cargo crushy` replays stale cached diagnostics from `target/crushy`. So track
+    // it in release too, not just `cfg!(debug_assertions)`.
     if let Ok(current_exe) = env::current_exe()
         && let Some(current_exe) = current_exe.to_str()
     {
@@ -197,9 +200,9 @@ impl rustc_driver::Callbacks for CrushyCallbacks {
             .crate_attr
             .push("register_tool(crushy)".to_string());
 
-        // Apply `[lints]` overrides from `crushy.toml`. Equivalent to passing `-A/-W/-D crushy::<lint>`,
-        // but sourced from a file only crushy reads — so a consumer's normal `cargo build` (which never
-        // registers the `crushy` tool) is untouched.
+        // Apply `[lints]` overrides from `crushy.toml`. Equivalent to passing `-A/-W/-D
+        // crushy::<lint>`, but sourced from a file only crushy reads — so a consumer's normal
+        // `cargo build` (which never registers the `crushy` tool) is untouched.
         for (name, level) in lint_levels {
             match parse_lint_level(&level) {
                 Some(level) => config.opts.lint_opts.push((format!("crushy::{name}"), level)),
@@ -213,8 +216,8 @@ impl rustc_driver::Callbacks for CrushyCallbacks {
 }
 
 /// Map a `crushy.toml` `[lints]` level string onto a compiler lint level.
-fn parse_lint_level(level: &str) -> Option<rustc_session::lint::Level> {
-    use rustc_session::lint::Level;
+fn parse_lint_level(level: &str) -> Option<rustc_lint::Level> {
+    use rustc_lint::Level;
     Some(match level {
         "allow" => Level::Allow,
         "warn" => Level::Warn,
@@ -244,7 +247,7 @@ fn main() -> ExitCode {
         // as simple as moving the call from the hook to main, because `install_ice_hook` doesn't
         // accept a generic closure.
         let version_info = rustc_tools_util::get_version_info!();
-        dcx.handle().note(format!("Crushy version: {version_info}"));
+        dcx.note(format!("Crushy version: {version_info}"));
     });
 
     rustc_driver::catch_with_exit_code(move || {
@@ -280,8 +283,8 @@ fn main() -> ExitCode {
         };
 
         // make "crushy-driver --rustc" work like a subcommand that passes further args to "rustc"
-        // for example `crushy-driver --rustc --version` will print the rustc version that crushy-driver
-        // uses
+        // for example `crushy-driver --rustc --version` will print the rustc version that
+        // crushy-driver uses
         if let Some(pos) = orig_args.iter().position(|arg| arg == "--rustc") {
             orig_args.remove(pos);
             orig_args[0] = "rustc".to_string();
@@ -289,7 +292,7 @@ fn main() -> ExitCode {
             let mut args: Vec<String> = orig_args.clone();
             pass_sysroot_env_if_given(&mut args, sys_root_env);
 
-            rustc_driver::run_compiler(&args, &mut DefaultCallbacks);
+            rustc_driver::compiler_entrypoint(&args, &mut DefaultCallbacks);
             return ExitCode::SUCCESS;
         }
 
@@ -366,9 +369,9 @@ fn main() -> ExitCode {
         let clippy_enabled = !cap_lints_allow && relevant_package && !info_query;
         if clippy_enabled {
             args.extend(crushy_args);
-            rustc_driver::run_compiler(&args, &mut CrushyCallbacks { crushy_args_var });
+            rustc_driver::compiler_entrypoint(&args, &mut CrushyCallbacks { crushy_args_var });
         } else {
-            rustc_driver::run_compiler(&args, &mut RustcCallbacks { crushy_args_var });
+            rustc_driver::compiler_entrypoint(&args, &mut RustcCallbacks { crushy_args_var });
         }
         ExitCode::SUCCESS
     })

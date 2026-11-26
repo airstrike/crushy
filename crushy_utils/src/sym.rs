@@ -1,6 +1,4 @@
-#![allow(non_upper_case_globals)]
-
-use rustc_span::symbol::PREDEFINED_SYMBOLS_COUNT;
+#![expect(non_upper_case_globals)]
 
 #[doc(no_inline)]
 pub use rustc_span::sym::*;
@@ -23,9 +21,26 @@ macro_rules! generate {
             )*
         ];
 
+        mod clippy_symbols {
+            use rustc_span::{Symbol, symbol::PREDEFINED_SYMBOLS_COUNT};
+            $(
+                pub const $name: Symbol = Symbol::new(PREDEFINED_SYMBOLS_COUNT + ${index()});
+            )*
+        }
+
         $(
-            pub const $name: rustc_span::Symbol = rustc_span::Symbol::new(PREDEFINED_SYMBOLS_COUNT + ${index()});
+            pub use clippy_symbols::$name;
         )*
+
+        #[allow(unused_imports)]
+        // Check that we don't have duplicate symbols with rustc.
+        // It's still checked by rustc's driver (at runtime) regardless,
+        // but it's nicer to fail at compile time instead.
+        const _: () = {
+            use rustc_span::sym::*; // First, glob import all of rustc's symbols
+            use clippy_symbols::*; // Then, glob import all of clippy's symbols
+            use { $($name),* }; // If a symbol is in both, an ambiguity error is raised
+        };
     };
 }
 
@@ -40,6 +55,7 @@ generate! {
     AsyncReadExt,
     AsyncWriteExt,
     BACKSLASH_SINGLE_QUOTE: r"\'",
+    BITS,
     BTreeEntry,
     BTreeSet,
     Binary,
@@ -63,6 +79,7 @@ generate! {
     Error,
     File,
     FileType,
+    FromStr,
     FsOpenOptions,
     FsPermissions,
     HashMapEntry,
@@ -100,6 +117,7 @@ generate! {
     Path,
     PathBuf,
     PathLookup,
+    PhantomPinned,
     RangeBounds,
     RefCellRef,
     RefCellRefMut,
@@ -127,6 +145,7 @@ generate! {
     Weak,
     Wrapping,
     abs,
+    allow_attributes,
     ambiguous_glob_reexports,
     app,
     append,
@@ -136,10 +155,13 @@ generate! {
     as_deref,
     as_deref_mut,
     as_mut,
+    as_mut_ptr,
+    as_mut_slice,
     as_path,
-    as_ptr,
+    as_slice,
     as_str,
     assert_failed,
+    assert_matches,
     author,
     back,
     binary_heap_pop_if,
@@ -159,7 +181,6 @@ generate! {
     cast,
     cast_const,
     cast_mut,
-    ceil,
     ceil_char_boundary,
     chain,
     char_is_ascii,
@@ -175,6 +196,8 @@ generate! {
     checked_sub,
     child_id,
     child_kill,
+    chunks_exact,
+    chunks_exact_mut,
     clamp,
     crushy_utils,
     clone_into,
@@ -202,7 +225,9 @@ generate! {
     cx,
     cycle,
     cyclomatic_complexity,
+    dbg_macro,
     de,
+    debug_assert_matches,
     debug_struct,
     deprecated_in_future,
     deref_mut_method,
@@ -215,10 +240,9 @@ generate! {
     enum_glob_use,
     enumerate,
     enumerate_method,
-    eprint_macro,
-    eprintln_macro,
+    eprint,
+    eprintln,
     err,
-    exp,
     expect_err,
     expn_data,
     exported_private_dependencies,
@@ -269,18 +293,16 @@ generate! {
     first,
     flat_map,
     flatten,
-    floor,
     floor_char_boundary,
     fold,
     for_each,
-    format_args_macro,
+    format,
     from_be_bytes,
     from_bytes_with_nul,
     from_bytes_with_nul_unchecked,
     from_days,
     from_fn,
     from_hours,
-    from_iter_fn,
     from_le_bytes,
     from_micros,
     from_millis,
@@ -360,6 +382,7 @@ generate! {
     into_bytes,
     into_ok,
     into_owned,
+    into_raw,
     intrinsics_unaligned_volatile_load,
     intrinsics_unaligned_volatile_store,
     io,
@@ -401,9 +424,6 @@ generate! {
     ln,
     lock,
     lock_api,
-    log,
-    log10,
-    log2,
     macro_concat,
     macro_use_imports,
     map_break,
@@ -432,6 +452,7 @@ generate! {
     module_name_repetitions,
     msrv,
     msrvs,
+    mul_add,
     mut_ptr,
     mutex,
     needless_return,
@@ -475,10 +496,8 @@ generate! {
     pop_if,
     position,
     pow,
-    powf,
-    powi,
-    print_macro,
-    println_macro,
+    print,
+    println,
     process_abort,
     process_exit,
     product,
@@ -516,7 +535,6 @@ generate! {
     rfind,
     rmatch_indices,
     rmatches,
-    round,
     rposition,
     rsplit,
     rsplit_once,
@@ -525,7 +543,6 @@ generate! {
     rsplitn_mut,
     rustc_errors,
     rustc_lint,
-    rustc_lint_defs,
     rustc_middle,
     rustc_span,
     rustfmt_skip,
@@ -565,7 +582,6 @@ generate! {
     split_whitespace,
     splitn,
     splitn_mut,
-    sqrt,
     starts_with,
     std_detect,
     step_by,
@@ -607,7 +623,6 @@ generate! {
     to_path_buf,
     to_string_method,
     to_uppercase,
-    todo_macro,
     tokio,
     trim,
     trim_end,
@@ -618,7 +633,6 @@ generate! {
     try_fold,
     try_for_each,
     try_from_fn,
-    unimplemented_macro,
     unreachable_pub,
     unsafe_removed_from_name,
     unused,
@@ -645,9 +659,9 @@ generate! {
     visit_str,
     visit_string,
     wake,
-    warnings,
     wildcard_imports,
     with_capacity,
+    wrapping_neg,
     wrapping_offset,
     write,
     write_unaligned,

@@ -77,7 +77,7 @@ impl<const REPLACEMENT_ALLOWED: bool> DisallowedPath<REPLACEMENT_ALLOWED> {
         &self.path
     }
 
-    pub fn diag_amendment(&self, span: Span) -> impl FnOnce(&mut Diag<'_, ()>) {
+    pub fn diag_amendment(&self, span: Span) -> impl FnOnce(&mut Diag<'_>) {
         move |diag| {
             if let Some(replacement) = &self.replacement {
                 diag.span_suggestion(

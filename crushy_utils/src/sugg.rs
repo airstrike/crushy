@@ -7,13 +7,13 @@ use rustc_ast::util::parser::AssocOp;
 use rustc_ast::{UnOp, ast};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_errors::Applicability;
-use rustc_hir::{self as hir, Closure, ExprKind, HirId, MatchSource, MutTy, Node, TyKind};
+use rustc_hir::{self as hir, Closure, ExprKind, HirId, MatchSource, Node, TyKind};
 use rustc_hir_typeck::expr_use_visitor::{Delegate, ExprUseVisitor, PlaceBase, PlaceWithHirId};
 use rustc_lint::{EarlyContext, LateContext, LintContext};
 use rustc_middle::hir::place::ProjectionKind;
 use rustc_middle::mir::{FakeReadCause, Mutability};
 use rustc_middle::ty;
-use rustc_span::{BytePos, CharPos, Pos, Span, SyntaxContext};
+use rustc_span::{BytePos, CharPos, Pos as _, Span, SyntaxContext};
 use std::borrow::Cow;
 use std::fmt::{self, Display, Write as _};
 use std::ops::{Add, Neg, Not, Sub};
@@ -131,7 +131,7 @@ impl<'a> Sugg<'a> {
         mut get_snippet: impl FnMut(Span) -> Cow<'a, str>,
     ) -> Self {
         if let Some(range) = higher::Range::hir(cx, expr) {
-            let op = AssocOp::Range(range.limits);
+            let op = AssocOp::Range(range.ty.limits());
             let start = range.start.map_or("".into(), |expr| get_snippet(expr.span));
             let end = range.end.map_or("".into(), |expr| get_snippet(expr.span));
 
@@ -246,7 +246,7 @@ impl<'a> Sugg<'a> {
             | ast::ExprKind::Array(..)
             | ast::ExprKind::While(..)
             | ast::ExprKind::Await(..)
-            | ast::ExprKind::DirectConstArg(..)
+            | ast::ExprKind::GcaMacro(..)
             | ast::ExprKind::Err(_)
             | ast::ExprKind::Dummy
             | ast::ExprKind::UnsafeBinderCast(..) => Sugg::NonParen(snippet(expr.span)),
@@ -389,6 +389,7 @@ impl<'a> Sugg<'a> {
         }
     }
 
+    /// Format this suggestion into a [`String`] to be displayed to the user.
     pub fn into_string(self) -> String {
         match self {
             Sugg::NonParen(p) | Sugg::MaybeParen(p) => p.into_owned(),
@@ -714,19 +715,19 @@ pub trait DiagExt<T: LintContext> {
         applicability: Applicability,
     );
 
-    /// Suggest to add an item before another.
+    /// Suggest to add an item after another.
     ///
     /// The item should not be indented (except for inner indentation).
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// diag.suggest_prepend_item(cx, item,
+    /// diag.suggest_append_item(cx, item,
     /// "fn foo() {
     ///     bar();
     /// }");
     /// ```
-    fn suggest_prepend_item(&mut self, cx: &T, item: Span, msg: &str, new_item: &str, applicability: Applicability);
+    fn suggest_append_item(&mut self, cx: &T, item: Span, msg: &str, new_item: &str, applicability: Applicability);
 
     /// Suggest to completely remove an item.
     ///
@@ -742,7 +743,7 @@ pub trait DiagExt<T: LintContext> {
     fn suggest_remove_item(&mut self, cx: &T, item: Span, msg: &str, applicability: Applicability);
 }
 
-impl<T: LintContext> DiagExt<T> for rustc_errors::Diag<'_, ()> {
+impl<T: LintContext> DiagExt<T> for rustc_errors::Diag<'_> {
     fn suggest_item_with_attr<D: Display + ?Sized>(
         &mut self,
         cx: &T,
@@ -758,24 +759,19 @@ impl<T: LintContext> DiagExt<T> for rustc_errors::Diag<'_, ()> {
         }
     }
 
-    fn suggest_prepend_item(&mut self, cx: &T, item: Span, msg: &str, new_item: &str, applicability: Applicability) {
+    fn suggest_append_item(&mut self, cx: &T, item: Span, msg: &str, new_item: &str, applicability: Applicability) {
         if let Some(indent) = indentation(cx, item) {
-            let span = item.with_hi(item.lo());
-
-            let mut first = true;
-            let new_item = new_item
-                .lines()
-                .map(|l| {
-                    if first {
-                        first = false;
-                        format!("{l}\n")
-                    } else {
-                        format!("{indent}{l}\n")
-                    }
-                })
-                .collect::<String>();
-
-            self.span_suggestion(span, msg.to_string(), format!("{new_item}\n{indent}"), applicability);
+            let span = item.shrink_to_hi();
+            let mut new_item_code = String::new();
+            for l in new_item.lines() {
+                writeln!(new_item_code, "{indent}{l}").unwrap();
+            }
+            self.span_suggestion(
+                span,
+                msg.to_string(),
+                format!("\n\n{}", new_item_code.strip_suffix('\n').unwrap()),
+                applicability,
+            );
         }
     }
 
@@ -818,9 +814,8 @@ pub fn deref_closure_args(cx: &LateContext<'_>, closure: &hir::Expr<'_>) -> Opti
         let closure_body = cx.tcx.hir_body(body);
         // is closure arg a type annotated double reference (i.e.: `|x: &&i32| ...`)
         // a type annotation is present if param `kind` is different from `TyKind::Infer`
-        let closure_arg_is_type_annotated_double_ref = if let TyKind::Ref(_, MutTy { ty, .. }) = fn_decl.inputs[0].kind
-        {
-            matches!(ty.kind, TyKind::Ref(_, MutTy { .. }))
+        let closure_arg_is_type_annotated_double_ref = if let TyKind::Ref(_, ty, ..) = fn_decl.inputs[0].kind {
+            matches!(ty.kind, TyKind::Ref(..))
         } else {
             false
         };
@@ -966,39 +961,42 @@ impl<'tcx> Delegate<'tcx> for DerefDelegate<'_, 'tcx> {
                 // i.e.: suggest `.contains(&x)` for `.find(|x| [1, 2, 3].contains(x)).is_none()`
                 //
                 // Note about method calls:
-                // - compiler automatically dereference references if the target type is a reference (works also for
-                //   function call)
-                // - `self` arguments in the case of `x.is_something()` are also automatically (de)referenced, and
-                //   no projection should be suggested
+                // - compiler automatically dereference references if the target type is a reference
+                //   (works also for function call)
+                // - `self` arguments in the case of `x.is_something()` are also automatically
+                //   (de)referenced, and no projection should be suggested
                 if let Some(parent_expr) = get_parent_expr_for_hir(self.cx, cmt.hir_id) {
                     match &parent_expr.kind {
-                        // given expression is the self argument and will be handled completely by the compiler
-                        // i.e.: `|x| x.is_something()`
+                        // given expression is the self argument and will be handled completely by
+                        // the compiler i.e.: `|x| x.is_something()`
                         ExprKind::MethodCall(_, self_expr, ..) if self_expr.hir_id == cmt.hir_id => {
                             let _: fmt::Result = write!(self.suggestion_start, "{start_snip}{ident_str_with_proj}");
                             self.next_pos = span.hi();
                             return;
                         },
                         // item is used in a call
-                        // i.e.: `Call`: `|x| please(x)` or `MethodCall`: `|x| [1, 2, 3].contains(x)`
+                        // i.e.: `Call`: `|x| please(x)` or `MethodCall`: `|x| [1, 2,
+                        // 3].contains(x)`
                         ExprKind::Call(_, call_args) | ExprKind::MethodCall(_, _, call_args, _) => {
                             let expr = self.cx.tcx.hir_expect_expr(cmt.hir_id);
                             let arg_ty_kind = self.cx.typeck_results().expr_ty(expr).kind();
 
                             if matches!(arg_ty_kind, ty::Ref(_, _, Mutability::Not)) {
-                                // suggest ampersand if call function is taking args by double reference
+                                // suggest ampersand if call function is taking args by double
+                                // reference
                                 let takes_arg_by_double_ref =
                                     self.func_takes_arg_by_double_ref(parent_expr, cmt.hir_id);
 
-                                // compiler will automatically dereference field or index projection, so no need
-                                // to suggest ampersand, but full identifier that includes projection is required
+                                // compiler will automatically dereference field or index
+                                // projection, so no need to suggest ampersand, but full identifier
+                                // that includes projection is required
                                 let has_field_or_index_projection =
                                     cmt.place.projections.iter().any(|proj| {
                                         matches!(proj.kind, ProjectionKind::Field(..) | ProjectionKind::Index)
                                     });
 
-                                // no need to bind again if the function doesn't take arg by double ref
-                                // and if the item is already a double ref
+                                // no need to bind again if the function doesn't take arg by double
+                                // ref and if the item is already a double ref
                                 let ident_sugg = if !call_args.is_empty()
                                     && !takes_arg_by_double_ref
                                     && (self.closure_arg_is_type_annotated_double_ref || has_field_or_index_projection)

@@ -1,13 +1,16 @@
+//! Utilities for analyzing macro invocations and expansions.
+
+use std::cell::Cell;
 use std::sync::{Arc, OnceLock};
 
 use crate::visitors::{Descend, for_each_expr_without_closures};
-use crate::{get_unique_builtin_attr, sym};
+use crate::{get_clippy_attr, sym};
 
 use arrayvec::ArrayVec;
 use rustc_ast::{FormatArgs, FormatArgument, FormatPlaceholder};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{self as hir, Expr, ExprKind, HirId, Node, QPath};
-use rustc_lint::{LateContext, LintContext};
+use rustc_lint::LateContext;
 use rustc_span::def_id::DefId;
 use rustc_span::hygiene::{self, MacroKind, SyntaxContext};
 use rustc_span::{BytePos, ExpnData, ExpnId, ExpnKind, Span, SpanData, Symbol};
@@ -41,13 +44,7 @@ pub fn is_format_macro(cx: &LateContext<'_>, macro_def_id: DefId) -> bool {
     } else {
         // Allow users to tag any macro as being format!-like
         // TODO: consider deleting FORMAT_MACRO_DIAG_ITEMS and using just this method
-        get_unique_builtin_attr(
-            cx.sess(),
-            #[allow(deprecated)]
-            cx.tcx.get_all_attrs(macro_def_id),
-            sym::format_args,
-        )
-        .is_some()
+        get_clippy_attr(cx.tcx, macro_def_id, sym::format_args).is_some()
     }
 }
 
@@ -70,6 +67,7 @@ pub struct MacroCall {
 }
 
 impl MacroCall {
+    /// Returns true if this macro call is from the root expansion or a locally defined macro
     pub fn is_local(&self) -> bool {
         span_is_local(self.span)
     }
@@ -177,6 +175,33 @@ pub fn first_node_macro_backtrace(cx: &LateContext<'_>, node: &impl HirNode) -> 
 /// A node may be the "first node" of multiple macro calls in a macro backtrace.
 /// The expansion of the outermost macro call site is returned in such cases.
 pub fn first_node_in_macro(cx: &LateContext<'_>, node: &impl HirNode) -> Option<ExpnId> {
+    // A node that is not from an expansion can never be the first node in a macro. This is the
+    // common case, so return before touching the cache.
+    if !node.span().from_expansion() {
+        return None;
+    }
+
+    // The macro lints each query this for the node currently being visited, and the combined late
+    // pass runs all their `check_*` callbacks on that node back to back, so the redundant queries
+    // are consecutive. A single-slot memo of the last node collapses them to one backtrace walk in
+    // O(1) memory. The result is a pure function of the `HirId` (the HIR is frozen during lint
+    // passes), so returning the stored value on a key match is always correct.
+    let hir_id = node.hir_id();
+    if let Some((cached_id, cached)) = LAST_FIRST_NODE_IN_MACRO.get()
+        && cached_id == hir_id
+    {
+        return cached;
+    }
+    let result = first_node_in_macro_uncached(cx, node);
+    LAST_FIRST_NODE_IN_MACRO.set(Some((hir_id, result)));
+    result
+}
+
+thread_local! {
+    static LAST_FIRST_NODE_IN_MACRO: Cell<Option<(HirId, Option<ExpnId>)>> = const { Cell::new(None) };
+}
+
+fn first_node_in_macro_uncached(cx: &LateContext<'_>, node: &impl HirNode) -> Option<ExpnId> {
     // get the macro expansion or return `None` if not found
     // `macro_backtrace` importantly ignores desugaring expansions
     let expn = macro_backtrace(node.span()).next()?.expn;
@@ -271,7 +296,7 @@ impl<'a> PanicCall<'a> {
         };
         let result = match name {
             sym::panic | sym::begin_panic | sym::panic_str_2015 => {
-                if arg.span.eq_ctxt(expr.span) || arg.span.is_dummy() {
+                if arg.span.ctxt() == expr.span.ctxt() || arg.span.is_dummy() {
                     Self::DefaultMessage
                 } else {
                     Self::Str2015(arg)
@@ -285,14 +310,16 @@ impl<'a> PanicCall<'a> {
             },
             sym::panic_fmt => Self::Format(arg),
             // Since Rust 1.52, `assert_{eq,ne}` macros expand to use:
-            // `core::panicking::assert_failed(.., left_val, right_val, None | Some(format_args!(..)));`
+            // `core::panicking::assert_failed(.., left_val, right_val, None |
+            // Some(format_args!(..)));`
             sym::assert_failed => {
                 // It should have 4 arguments in total (we already matched with the first argument,
                 // so we're just checking for 3)
                 if rest.len() != 3 {
                     return None;
                 }
-                // `msg_arg` is either `None` (no custom message) or `Some(format_args!(..))` (custom message)
+                // `msg_arg` is either `None` (no custom message) or `Some(format_args!(..))`
+                // (custom message)
                 let msg_arg = &rest[2];
                 match msg_arg.kind {
                     ExprKind::Call(_, [fmt_arg]) => Self::Format(fmt_arg),
@@ -431,6 +458,24 @@ impl FormatArgsStorage {
         self.0.get()?.get(&format_args_expr.span.with_parent(None))
     }
 
+    /// Returns AST [`FormatArgs`] nodes if there are any nested inside `parent_format_args`.
+    pub fn get_nested(&self, parent_format_args: &FormatArgs) -> Vec<&FormatArgs> {
+        let mut nested = Vec::new();
+        let Some(format_args_map) = self.0.get() else {
+            return nested;
+        };
+
+        for arg in parent_format_args.arguments.all_args() {
+            if matches!(arg.expr.kind, rustc_ast::ExprKind::FormatArgs(_))
+                && let Some(format_args) = format_args_map.get(&arg.expr.span.with_parent(None))
+            {
+                nested.push(format_args);
+            }
+        }
+
+        nested
+    }
+
     /// Should only be called by `FormatArgsCollector`
     pub fn set(&self, format_args: FxHashMap<Span, FormatArgs>) {
         self.0
@@ -469,8 +514,8 @@ pub fn find_format_arg_expr<'hir>(start: &'hir Expr<'hir>, target: &FormatArgume
 pub fn format_placeholder_format_span(placeholder: &FormatPlaceholder) -> Option<Span> {
     let base = placeholder.span?.data();
 
-    // `base.hi` is `{...}|`, subtract 1 byte (the length of '}') so that it points before the closing
-    // brace `{...|}`
+    // `base.hi` is `{...}|`, subtract 1 byte (the length of '}') so that it points before the
+    // closing brace `{...|}`
     Some(Span::new(
         placeholder.argument.span?.hi(),
         base.hi - BytePos(1),
@@ -528,7 +573,9 @@ pub enum FormatParamUsage {
 
 /// A node with a `HirId` and a `Span`
 pub trait HirNode {
+    /// Returns this node's [`HirId`]
     fn hir_id(&self) -> HirId;
+    /// Returns this node's [`Span`]
     fn span(&self) -> Span;
 }
 

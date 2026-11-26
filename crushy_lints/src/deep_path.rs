@@ -1,8 +1,7 @@
 use crushy_config::Conf;
 use crushy_utils::diagnostics::span_lint_and_help;
 use rustc_ast::{Expr, ExprKind, Pat, PatKind, Path, QSelf, Ty, TyKind};
-use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
-use rustc_session::impl_lint_pass;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintContext, impl_lint_pass};
 use rustc_span::symbol::kw;
 use rustc_span::{FileName, Span};
 

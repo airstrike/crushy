@@ -1,29 +1,28 @@
-//! A heuristic to tell whether an expression's type can be determined purely from its
-//! subexpressions, and the arguments and locals they use. Put another way, `expr_type_is_certain`
-//! tries to tell whether an expression's type can be determined without appeal to the surrounding
-//! context.
-//!
-//! This is, in some sense, a counterpart to `let_unit_value`'s `expr_needs_inferred_result`.
-//! Intuitively, that function determines whether an expression's type is needed for type inference,
-//! whereas `expr_type_is_certain` determines whether type inference is needed for an expression's
-//! type.
-//!
-//! As a heuristic, `expr_type_is_certain` may produce false negatives, but a false positive should
-//! be considered a bug.
-
 use crate::paths::{PathNS, lookup_path};
 use rustc_ast::{LitFloatType, LitIntType, LitKind};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
-use rustc_hir::intravisit::{InferKind, Visitor, VisitorExt, walk_qpath, walk_ty};
+use rustc_hir::intravisit::{InferKind, Visitor, walk_qpath, walk_ty};
 use rustc_hir::{self as hir, AmbigArg, Expr, ExprKind, GenericArgs, HirId, Node, Param, PathSegment, QPath, TyKind};
 use rustc_lint::LateContext;
 use rustc_middle::ty::{self, AdtDef, GenericArgKind, Ty};
 use rustc_span::Span;
 
 mod certainty;
-use certainty::{Certainty, Meet, join, meet};
+use certainty::{Certainty, Meet as _, join, meet};
 
+/// A heuristic to tell whether an expression's type can be determined purely from its
+/// subexpressions, and the arguments and locals they use. Put another way, this function
+/// tries to tell whether an expression's type can be determined without appeal to the surrounding
+/// context.
+///
+/// This is, in some sense, a counterpart to `let_unit_value`'s `expr_needs_inferred_result`.
+/// Intuitively, that function determines whether an expression's type is needed for type inference,
+/// whereas this function determines whether type inference is needed for an expression's
+/// type.
+///
+/// As a heuristic, this may produce false negatives, but a false positive should
+/// be considered a bug.
 pub fn expr_type_is_certain(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     expr_type_certainty(cx, expr, false).is_certain()
 }
@@ -51,9 +50,10 @@ fn expr_type_certainty(cx: &LateContext<'_>, expr: &Expr<'_>, in_arg: bool) -> C
 
         ExprKind::MethodCall(method, receiver, args, _) => {
             let mut receiver_type_certainty = expr_type_certainty(cx, receiver, false);
-            // Even if `receiver_type_certainty` is `Certain(Some(..))`, the `Self` type in the method
-            // identified by `type_dependent_def_id(..)` can differ. This can happen as a result of a `deref`,
-            // for example. So update the `DefId` in `receiver_type_certainty` (if any).
+            // Even if `receiver_type_certainty` is `Certain(Some(..))`, the `Self` type in the
+            // method identified by `type_dependent_def_id(..)` can differ. This can happen as a
+            // result of a `deref`, for example. So update the `DefId` in `receiver_type_certainty`
+            // (if any).
             if let Some(method_def_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
                 && let Some(self_ty_def_id) = adt_def_id(self_ty(cx, method_def_id))
             {
@@ -74,8 +74,8 @@ fn expr_type_certainty(cx: &LateContext<'_>, expr: &Expr<'_>, in_arg: bool) -> C
         ExprKind::Tup(exprs) => meet(exprs.iter().map(|expr| expr_type_certainty(cx, expr, in_arg))),
 
         ExprKind::Binary(_, lhs, rhs) => {
-            // If one of the side of the expression is uncertain, the certainty will come from the other side,
-            // with no information on the type.
+            // If one of the side of the expression is uncertain, the certainty will come from the
+            // other side, with no information on the type.
             match (
                 expr_type_certainty(cx, lhs, in_arg),
                 expr_type_certainty(cx, rhs, in_arg),
@@ -160,8 +160,8 @@ fn type_certainty(cx: &LateContext<'_>, ty: &hir::Ty<'_>) -> Certainty {
     // Note that `CertaintyVisitor::new` initializes the visitor's internal certainty to
     // `Certainty::Certain(None)`. Furthermore, if a `TyKind::Path` is encountered while traversing
     // `ty`, the result of the call to `qpath_certainty` is combined with the visitor's internal
-    // certainty using `Certainty::meet`. Thus, if the `TyKind::Path` were not treated specially here,
-    // the resulting certainty would be `Certainty::Certain(None)`.
+    // certainty using `Certainty::meet`. Thus, if the `TyKind::Path` were not treated specially
+    // here, the resulting certainty would be `Certainty::Certain(None)`.
     if let TyKind::Path(qpath) = &ty.kind {
         return qpath_certainty(cx, qpath, true);
     }
@@ -223,11 +223,13 @@ fn path_segment_certainty(
     resolves_to_type: bool,
 ) -> Certainty {
     let certainty = match update_res(cx, parent_certainty, path_segment, resolves_to_type).unwrap_or(path_segment.res) {
-        // A definition's type is certain if it refers to something without generics (e.g., a crate or module, or
-        // an unparameterized type), or the generics are instantiated with arguments that are certain.
+        // A definition's type is certain if it refers to something without generics (e.g., a crate
+        // or module, or an unparameterized type), or the generics are instantiated with arguments
+        // that are certain.
         //
-        // If the parent is uncertain, then the current path segment must account for the parent's generic arguments.
-        // Consider the following examples, where the current path segment is `None`:
+        // If the parent is uncertain, then the current path segment must account for the parent's
+        // generic arguments. Consider the following examples, where the current path segment is
+        // `None`:
         // - `Option::None`             // uncertain; parent (i.e., `Option`) is uncertain
         // - `Option::<Vec<u64>>::None` // certain; parent (i.e., `Option::<..>`) is certain
         // - `Option::None::<Vec<u64>>` // certain; parent (i.e., `Option`) is uncertain
@@ -245,7 +247,8 @@ fn path_segment_certainty(
                 let rhs = path_segment
                     .args
                     .map_or(Certainty::Uncertain, |args| generic_args_certainty(cx, args));
-                // See the comment preceding `qpath_certainty`. `def_id` could refer to a type or a value.
+                // See the comment preceding `qpath_certainty`. `def_id` could refer to a type or a
+                // value.
                 let certainty = lhs.join_clearing_def_ids(rhs);
                 if resolves_to_type {
                     if let DefKind::TyAlias = cx.tcx.def_kind(def_id) {
@@ -266,13 +269,14 @@ fn path_segment_certainty(
             Certainty::Certain(None)
         },
 
-        // `get_parent` because `hir_id` refers to a `Pat`, and we're interested in the node containing the `Pat`.
+        // `get_parent` because `hir_id` refers to a `Pat`, and we're interested in the node
+        // containing the `Pat`.
         Res::Local(hir_id) => match cx.tcx.parent_hir_node(hir_id) {
-            // A parameter's type is not always certain, as it may come from an untyped closure definition,
-            // or from a wildcard in a typed closure definition.
+            // A parameter's type is not always certain, as it may come from an untyped closure
+            // definition, or from a wildcard in a typed closure definition.
             Node::Param(param) => param_certainty(cx, param),
-            // A local's type is certain if its type annotation is certain or it has an initializer whose
-            // type is certain.
+            // A local's type is certain if its type annotation is certain or it has an initializer
+            // whose type is certain.
             Node::LetStmt(local) => {
                 let lhs = local.ty.map_or(Certainty::Uncertain, |ty| type_certainty(cx, ty));
                 let rhs = local
