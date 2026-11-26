@@ -1,8 +1,7 @@
 use crushy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use rustc_ast::{Expr, ExprKind};
 use rustc_errors::Applicability;
-use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
-use rustc_session::impl_lint_pass;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintContext, impl_lint_pass};
 use rustc_span::Span;
 
 declare_crushy_lint! {

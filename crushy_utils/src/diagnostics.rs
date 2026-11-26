@@ -8,14 +8,14 @@
 //! Thank you!
 //! ~The `INTERNAL_METADATA_COLLECTOR` lint
 
-use rustc_errors::{Applicability, Diag, DiagCtxtHandle, DiagMessage, Diagnostic, Level, MultiSpan};
+use rustc_errors::{Applicability, Diag, DiagCtxtHandle, DiagLocation, DiagMessage, Diagnostic, Level, MultiSpan};
 #[cfg(debug_assertions)]
-use rustc_errors::{EmissionGuarantee, SubstitutionPart, Suggestions};
+use rustc_errors::{SubstitutionPart, Suggestions};
 use rustc_hir::HirId;
 use rustc_lint::{LateContext, Lint, LintContext};
 use rustc_span::Span;
 
-fn docs_link(_diag: &mut Diag<'_, ()>, _lint: &'static Lint) {
+fn docs_link(_diag: &mut Diag<'_>, _lint: &'static Lint) {
     // No docs site yet — see https://github.com/airstrike/crushy
 }
 
@@ -28,7 +28,7 @@ fn docs_link(_diag: &mut Diag<'_, ()>, _lint: &'static Lint) {
 ///
 /// This function makes sure we also validate them in debug clippy builds.
 #[cfg(debug_assertions)]
-fn validate_diag(diag: &Diag<'_, impl EmissionGuarantee>) {
+fn validate_diag(diag: &Diag<'_>) {
     let suggestions = match &diag.suggestions {
         Suggestions::Enabled(suggs) => &**suggs,
         Suggestions::Sealed(suggs) => &**suggs,
@@ -223,12 +223,12 @@ where
     C: LintContext,
     S: Into<MultiSpan>,
     M: Into<DiagMessage>,
-    F: FnOnce(&mut Diag<'_, ()>),
+    F: FnOnce(&mut Diag<'_>),
 {
-    struct CrushyDiag<F: FnOnce(&mut Diag<'_, ()>)>(F);
+    struct CrushyDiag<F: FnOnce(&mut Diag<'_>)>(F);
 
-    impl<'a, F: FnOnce(&mut Diag<'_, ()>)> Diagnostic<'a, ()> for CrushyDiag<F> {
-        fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, ()> {
+    impl<'a, F: FnOnce(&mut Diag<'_>)> Diagnostic<'a> for CrushyDiag<F> {
+        fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a> {
             let mut lint = Diag::new(dcx, level, "");
             (self.0)(&mut lint);
             lint
@@ -236,11 +236,14 @@ where
     }
 
     let sp = sp.into();
+    let emitted_at = DiagLocation::caller();
+
     cx.emit_span_lint(
         lint,
         sp.clone(),
-        CrushyDiag(|diag: &mut Diag<'_, ()>| {
+        CrushyDiag(|diag: &mut Diag<'_>| {
             diag.primary_message(msg);
+            diag.emitted_at = emitted_at;
             diag.span(sp);
             f(diag);
             docs_link(diag, lint);
@@ -311,14 +314,17 @@ pub fn span_lint_hir_and_then(
     hir_id: HirId,
     sp: impl Into<MultiSpan>,
     msg: impl Into<DiagMessage>,
-    f: impl FnOnce(&mut Diag<'_, ()>),
+    f: impl FnOnce(&mut Diag<'_>),
 ) {
+    let emitted_at = DiagLocation::caller();
+
     cx.tcx.emit_node_span_lint(
         lint,
         hir_id,
         sp,
         rustc_errors::DiagDecorator(|diag| {
             diag.primary_message(msg);
+            diag.emitted_at = emitted_at;
             f(diag);
             docs_link(diag, lint);
 
@@ -374,9 +380,10 @@ pub fn span_lint_and_sugg<T: LintContext>(
     span_lint_and_then(cx, lint, sp, msg.into(), |diag| {
         diag.span_suggestion(sp, help.into(), sugg, applicability);
 
-        // This dummy construct is here to prevent the internal `crushy::collapsible_span_lint_calls`
-        // lint from triggering. We don't want to allow/expect it as internal lints might or might
-        // not be activated when linting, and we don't want an unknown lint warning either.
+        // This dummy construct is here to prevent the internal
+        // `crushy::collapsible_span_lint_calls` lint from triggering. We don't want to allow/expect
+        // it as internal lints might or might not be activated when linting, and we don't want an
+        // unknown lint warning either.
         std::hint::black_box(());
     });
 }
