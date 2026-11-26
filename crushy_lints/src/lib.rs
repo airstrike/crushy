@@ -60,11 +60,13 @@ pub fn register_lint_passes(store: &mut rustc_lint::LintStore, conf: &'static Co
         store.register_removed(name, reason);
     }
 
-    store.register_early_pass(|| Box::new(container_align_helper::ContainerAlignHelper::default()));
-    store.register_early_pass(|| Box::new(container_combine_align::ContainerCombineAlign));
-    store.register_early_pass(move || Box::new(deep_path::DeepPath::new(conf)));
-    store.register_early_pass(|| Box::new(imported_message::ImportedMessage));
-    store.register_early_pass(|| Box::new(length_fill::LengthFill));
-    store.register_early_pass(|| Box::new(message_naming::MessageNaming));
-    store.register_early_pass(|| Box::new(use_as_rename::UseAsRename));
+    store.register_early_lint_pass(Box::new(|| {
+        Box::new(container_align_helper::ContainerAlignHelper::default())
+    }));
+    store.register_early_lint_pass(Box::new(|| Box::new(container_combine_align::ContainerCombineAlign)));
+    store.register_early_lint_pass(Box::new(move || Box::new(deep_path::DeepPath::new(conf))));
+    store.register_early_lint_pass(Box::new(|| Box::new(imported_message::ImportedMessage)));
+    store.register_early_lint_pass(Box::new(|| Box::new(length_fill::LengthFill)));
+    store.register_early_lint_pass(Box::new(|| Box::new(message_naming::MessageNaming)));
+    store.register_early_lint_pass(Box::new(|| Box::new(use_as_rename::UseAsRename)));
 }

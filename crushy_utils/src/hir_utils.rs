@@ -301,9 +301,6 @@ impl HirEqInterExpr<'_, '_, '_> {
                 Self::eq_lifetime(l_region.lifetime, r_region.lifetime)
                     && self.eq_generics_bound(l_region.bounds, r_region.bounds)
             },
-            (WherePredicateKind::EqPredicate(l_eq), WherePredicateKind::EqPredicate(r_eq)) => {
-                self.eq_ty(l_eq.lhs_ty, r_eq.lhs_ty)
-            },
             _ => false,
         })
     }
@@ -1650,6 +1647,9 @@ impl<'a, 'tcx> SpanlessHash<'a, 'tcx> {
             },
             TyKind::UnsafeBinder(binder) => {
                 self.hash_ty(binder.inner_ty);
+            },
+            TyKind::View(ty, _) => {
+                self.hash_ty(ty);
             },
             TyKind::Err(_)
             | TyKind::Infer(())
